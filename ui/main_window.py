@@ -136,10 +136,20 @@ class MainWindow(QMainWindow):
             on_duplicated=self._duplicate_sequence,
         )
         self._global = GlobalSettings(self._config, self._on_global_saved, log=self.on_log)
+        # Em telas com escala do Windows alta (125%+), o conteúdo de
+        # Configurações Globais pode ficar mais alto que a janela. Sem rolagem,
+        # o Qt comprime as linhas para caber no espaço fixo (campos cortados/
+        # sobrepostos). Com QScrollArea, a janela mantém o tamanho normal dos
+        # campos e rola verticalmente quando necessário.
+        global_scroll = QScrollArea()
+        global_scroll.setWidgetResizable(True)
+        global_scroll.setFrameShape(QFrame.NoFrame)
+        global_scroll.setWidget(self._global)
+        self._global_scroll = global_scroll
         self._placeholder = self._build_placeholder()
         self._stack.addWidget(self._placeholder)   # 0
         self._stack.addWidget(self._detail)        # 1
-        self._stack.addWidget(self._global)        # 2
+        self._stack.addWidget(self._global_scroll) # 2
         body.addWidget(self._stack)
         body.setStretchFactor(0, 0)
         body.setStretchFactor(1, 1)
@@ -159,7 +169,15 @@ class MainWindow(QMainWindow):
         bar = QFrame(); bar.setObjectName("topbar"); bar.setFixedHeight(56)
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(16, 8, 12, 8)
-        logo = QLabel("⚡  AutoTrigger V10")
+        lay.setSpacing(8)
+
+        icon = _asset_icon()
+        logo_icon = QLabel()
+        if icon:
+            logo_icon.setPixmap(icon.pixmap(32, 32))
+        lay.addWidget(logo_icon)
+
+        logo = QLabel("AutoTrigger")
         logo.setObjectName("h1")
         lay.addWidget(logo)
         credit = QLabel("by RobsonDV")
@@ -347,7 +365,7 @@ class MainWindow(QMainWindow):
             card.set_selected(False)
         self._selected_id = None
         self._global._load()
-        self._stack.setCurrentWidget(self._global)
+        self._stack.setCurrentWidget(self._global_scroll)
 
     def _on_global_saved(self):
         self.on_log("Configurações globais salvas.", "success")

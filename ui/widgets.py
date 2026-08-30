@@ -17,6 +17,24 @@ from ui.theme import COLORS, STATE_COLORS, LEVEL_COLORS
 from timeparse import parse_secs, fmt_hint
 
 
+def form_field(widget: QWidget) -> QWidget:
+    """
+    Envolve um widget "cru" (QLineEdit/QComboBox/QSpinBox) num host com layout
+    próprio, para uso como campo de QFormLayout.
+
+    Contorna um bug do Qt/PySide6 em telas com escala fracionária do Windows
+    (125%, 150%...): quando esses widgets são adicionados como campo direto de
+    uma QFormLayout, a altura da linha é calculada errado e as linhas colapsam/
+    sobrepõem. Um host com QHBoxLayout força o Qt a calcular a altura da linha
+    pelo layout (correto) em vez do sizeHint do estilo (bugado nesse cenário).
+    """
+    host = QWidget()
+    lay = QHBoxLayout(host)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addWidget(widget)
+    return host
+
+
 def hline() -> QFrame:
     ln = QFrame()
     ln.setFrameShape(QFrame.HLine)

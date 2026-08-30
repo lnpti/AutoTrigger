@@ -165,7 +165,7 @@ QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit, QDateEdit {{
     background-color: {c['bg0']};
     border: 1px solid {c['border2']};
     border-radius: 8px;
-    padding: 6px 9px;
+    padding: 2px 9px;
     color: {c['text_hi']};
     selection-background-color: {c['cyan_dk']};
 }}

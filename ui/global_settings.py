@@ -9,14 +9,14 @@ from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QComboBox, QPushButton, QFileDialog, QCheckBox, QSpinBox,
 )
 
 import audio_manager as _audio
 import emailer
 from ui.theme import COLORS
-from ui.widgets import hline
+from ui.widgets import hline, LabeledRow
 
 # Cache de dispositivos no nível do módulo (evita re-enumerar a cada abertura)
 _DEV_CACHE = {"inputs": None, "outputs": None}
@@ -43,11 +43,6 @@ class GlobalSettings(QWidget):
         root.addWidget(title)
         root.addWidget(hline())
 
-        form = QFormLayout()
-        form.setHorizontalSpacing(14)
-        form.setVerticalSpacing(12)
-        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-
         # TXT
         txt_host = QWidget(); txt_l = QHBoxLayout(txt_host)
         txt_l.setContentsMargins(0, 0, 0, 0)
@@ -55,25 +50,20 @@ class GlobalSettings(QWidget):
         browse = QPushButton("📁"); browse.setObjectName("icon")
         browse.clicked.connect(self._browse_txt)
         txt_l.addWidget(self._txt, 1); txt_l.addWidget(browse)
-        form.addRow(_lbl("Arquivo TXT"), txt_host)
+        root.addWidget(LabeledRow("Arquivo TXT", txt_host, label_w=120))
 
         sec = QLabel("DISPOSITIVOS PADRÃO")
         sec.setObjectName("section")
-        root.addLayout(form)
         root.addSpacing(6)
         root.addWidget(sec)
 
-        form2 = QFormLayout()
-        form2.setHorizontalSpacing(14)
-        form2.setVerticalSpacing(12)
         self._in_combo = QComboBox()
         self._out_combo = QComboBox()
         refresh = QPushButton("↻  Recarregar dispositivos")
         refresh.setObjectName("ghost")
         refresh.clicked.connect(lambda: self._load_devices(force=True))
-        form2.addRow(_lbl("Entrada (mic)"), self._in_combo)
-        form2.addRow(_lbl("Saída (player)"), self._out_combo)
-        root.addLayout(form2)
+        root.addWidget(LabeledRow("Entrada (mic)", self._in_combo, label_w=120))
+        root.addWidget(LabeledRow("Saída (player)", self._out_combo, label_w=120))
         root.addWidget(refresh, alignment=Qt.AlignLeft)
 
         # ── Alertas por email ──────────────────────────────────────────────────
@@ -84,10 +74,6 @@ class GlobalSettings(QWidget):
 
         self._mail_enabled = QCheckBox("Ativar alertas por email")
         root.addWidget(self._mail_enabled)
-
-        form3 = QFormLayout()
-        form3.setHorizontalSpacing(14)
-        form3.setVerticalSpacing(10)
 
         self._smtp_host = QLineEdit()
         self._smtp_host.setPlaceholderText("ex.: smtp.gmail.com")
@@ -111,13 +97,12 @@ class GlobalSettings(QWidget):
         self._mail_to = QLineEdit()
         self._mail_to.setPlaceholderText("destino1@x.com, destino2@y.com")
 
-        form3.addRow(_lbl("Servidor SMTP"), self._smtp_host)
-        form3.addRow(_lbl("Porta / TLS"), port_host)
-        form3.addRow(_lbl("Usuário"), self._mail_user)
-        form3.addRow(_lbl("Senha"), self._mail_pass)
-        form3.addRow(_lbl("Remetente"), self._mail_from)
-        form3.addRow(_lbl("Destinatários"), self._mail_to)
-        root.addLayout(form3)
+        root.addWidget(LabeledRow("Servidor SMTP", self._smtp_host, label_w=120))
+        root.addWidget(LabeledRow("Porta / TLS", port_host, label_w=120))
+        root.addWidget(LabeledRow("Usuário", self._mail_user, label_w=120))
+        root.addWidget(LabeledRow("Senha", self._mail_pass, label_w=120))
+        root.addWidget(LabeledRow("Remetente", self._mail_from, label_w=120))
+        root.addWidget(LabeledRow("Destinatários", self._mail_to, label_w=120))
 
         ev_box = QWidget(); ev_l = QHBoxLayout(ev_box)
         ev_l.setContentsMargins(0, 0, 0, 0)
@@ -248,13 +233,6 @@ class GlobalSettings(QWidget):
         self._config.update_global(g)
         self._config.save()
         self._on_saved()
-
-
-def _lbl(text: str) -> QLabel:
-    lab = QLabel(text)
-    lab.setObjectName("muted")
-    lab.setFixedWidth(120)
-    return lab
 
 
 def _lbl_section(text: str) -> QLabel:

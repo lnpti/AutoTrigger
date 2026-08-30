@@ -62,7 +62,7 @@ import audio_manager as _audio
 import hotkey_sender as _hotkey
 from timeparse import parse_secs, fmt_secs
 from ui.theme import COLORS
-from ui.widgets import TimeField, hline
+from ui.widgets import TimeField, hline, form_field
 
 STEP_TYPES = [
     ("mute",          "🔇  Mute Dispositivo"),
@@ -186,7 +186,7 @@ class StepEditor(QWidget):
                     combo.setCurrentIndex(i)
                     break
             self._w["device"] = combo
-            self._form.addRow(_lbl("Dispositivo"), combo)
+            self._form.addRow(_lbl("Dispositivo"), form_field(combo))
             self._add_label_row(s)
 
         elif t == "hotkey":
@@ -229,7 +229,7 @@ class StepEditor(QWidget):
         elif t == "stream":
             url = QLineEdit(s.get("url", ""))
             self._w["url"] = url
-            self._form.addRow(_lbl("URL"), url)
+            self._form.addRow(_lbl("URL"), form_field(url))
             dur = TimeField(int(s.get("duration_seconds", 300)))
             self._w["dur"] = dur
             self._form.addRow(_lbl("Duração"), dur)
@@ -244,13 +244,13 @@ class StepEditor(QWidget):
         elif t == "wait_keyword":
             kw = QLineEdit(s.get("keyword", ""))
             self._w["keyword"] = kw
-            self._form.addRow(_lbl("Keyword"), kw)
+            self._form.addRow(_lbl("Keyword"), form_field(kw))
             self._add_label_row(s, default="Aguardar keyword")
 
     def _add_label_row(self, s: dict, default: str = ""):
         lbl = QLineEdit(s.get("label", default))
         self._w["label"] = lbl
-        self._form.addRow(_lbl("Rótulo"), lbl)
+        self._form.addRow(_lbl("Rótulo"), form_field(lbl))
 
     # ── actions ────────────────────────────────────────────────────────────────────
 

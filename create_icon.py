@@ -182,22 +182,38 @@ def _draw_ball(size: int) -> Image.Image:
     return img.resize((size, size), Image.LANCZOS)
 
 
+SOURCE_LOGO = os.path.join(BASE_DIR, "Ícone AutoTrigger.png")
+
+
 def create_icon(output_path: str = "assets/icon.ico"):
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     sizes = [16, 24, 32, 48, 64, 128, 256]
-    frames = [draw_icon(s) for s in sizes]
 
-    frames[0].save(
+    if os.path.isfile(SOURCE_LOGO):
+        source = Image.open(SOURCE_LOGO).convert("RGBA")
+        if source.width != source.height:
+            side = max(source.size)
+            square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+            square.paste(source, ((side - source.width) // 2, (side - source.height) // 2))
+            source = square
+    else:
+        # Fallback: gera o icone antigo (raio + engrenagem) via desenho vetorial.
+        source = draw_icon(256)
+
+    # Salvar a partir de UMA imagem-base com `sizes=` (Pillow reamostra cada
+    # tamanho internamente) -- passar frames pré-reamostrados via
+    # `append_images` mostrou-se pouco confiável (só o primeiro tamanho era
+    # gravado de fato).
+    source.save(
         output_path,
         format="ICO",
         sizes=[(s, s) for s in sizes],
-        append_images=frames[1:],
     )
-    print(f"Icone gerado: {output_path}  ({len(frames)} tamanhos)")
+    print(f"Icone gerado: {output_path}  ({len(sizes)} tamanhos)")
+    return source.resize((256, 256), Image.LANCZOS)  # preview
 
 
 if __name__ == "__main__":
-    create_icon("assets/icon.ico")
-    preview = draw_icon(256)
+    preview = create_icon("assets/icon.ico")
     preview.save("assets/icon_256.png")
     print("Preview: assets/icon_256.png")

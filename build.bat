@@ -3,7 +3,7 @@ cd /d "%~dp0"
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo  AutoTrigger V10 - Build .EXE
+echo  AutoTrigger V10 - Build .EXE + Instalador + Release
 echo ============================================
 echo.
 
@@ -27,13 +27,16 @@ if exist "%VLC_DIR%\libvlc.dll" (
 )
 echo.
 
-REM -- Gera icone atualizado ----------------------------------------------
-echo [1/4] Gerando icone...
+REM -- Gera icone e assets do instalador ------------------------------------
+echo [1/6] Gerando icone e imagens do instalador...
 python create_icon.py
 if %ERRORLEVEL% NEQ 0 echo AVISO: Falha ao gerar icone -- usando icone existente.
+python create_wizard_assets.py
+if %ERRORLEVEL% NEQ 0 echo AVISO: Falha ao gerar assets do wizard -- usando existentes.
 
 REM -- Dependencias -------------------------------------------------------
-echo [2/4] Instalando dependencias...
+echo.
+echo [2/6] Instalando dependencias...
 pip install -r requirements.txt --quiet
 if %ERRORLEVEL% NEQ 0 (
     echo ERRO ao instalar dependencias.
@@ -41,9 +44,28 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM -- Build --------------------------------------------------------------
+REM -- Sincroniza version_info.txt com version.py --------------------------
 echo.
-echo [3/4] Compilando AutoTriggerV10.exe v%APP_VERSION%...
+echo [3/6] Sincronizando version_info.txt (v%APP_VERSION%)...
+python -c "
+import re
+with open('version_info.txt', 'r', encoding='utf-8') as f:
+    content = f.read()
+v = '%APP_VERSION%'
+parts = (v.split('.') + ['0', '0', '0'])[:4]
+filevers = ','.join(parts)
+content = re.sub(r'filevers=\([^)]+\)', f'filevers=({filevers})', content)
+content = re.sub(r'prodvers=\([^)]+\)', f'prodvers=({filevers})', content)
+content = re.sub(r\"'FileVersion',(\s*)u'[^']+'\", lambda m: f\"'FileVersion',{m.group(1)}u'{v}.0'\", content)
+content = re.sub(r\"'ProductVersion',(\s*)u'[^']+'\", lambda m: f\"'ProductVersion',{m.group(1)}u'{v}'\", content)
+with open('version_info.txt', 'w', encoding='utf-8') as f:
+    f.write(content)
+print('version_info.txt atualizado.')
+"
+
+REM -- Build .exe -----------------------------------------------------------
+echo.
+echo [4/6] Compilando AutoTriggerV10.exe v%APP_VERSION%...
 echo.
 
 python -m PyInstaller ^
@@ -80,6 +102,7 @@ python -m PyInstaller ^
   --exclude-module "tkinter" ^
   --exclude-module "customtkinter" ^
   --exclude-module "pystray" ^
+  --noconfirm ^
   main.py
 
 if %ERRORLEVEL% NEQ 0 (
@@ -88,16 +111,29 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM -- Renomear com versao ------------------------------------------------
+REM -- Instalador (Inno Setup) -----------------------------------------------
 echo.
-echo [4/4] Preparando release...
-if exist "dist\AutoTriggerV10_v%APP_VERSION%.exe" del "dist\AutoTriggerV10_v%APP_VERSION%.exe"
-copy "dist\AutoTriggerV10.exe" "dist\AutoTriggerV10_v%APP_VERSION%.exe" >NUL
-echo Executavel versionado: dist\AutoTriggerV10_v%APP_VERSION%.exe
+echo [5/6] Gerando instalador com Inno Setup...
+set ISCC=
+if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+if exist "C:\Program Files\Inno Setup 6\ISCC.exe" set "ISCC=C:\Program Files\Inno Setup 6\ISCC.exe"
+
+if "%ISCC%"=="" (
+    echo AVISO: Inno Setup 6 nao encontrado ^(https://jrsoftware.org/isdl.php^).
+    echo        Pulando geracao do instalador -- so o .exe sera publicado.
+) else (
+    "%ISCC%" "installer.iss"
+    if %ERRORLEVEL% NEQ 0 (
+        echo ERRO durante a geracao do instalador com Inno Setup.
+        pause
+        exit /b 1
+    )
+    echo Instalador: dist\AutoTriggerV10_Setup_v%APP_VERSION%.exe
+)
 
 REM -- Publicar no GitHub Releases ----------------------------------------
 echo.
-echo Publicando GitHub Release v%APP_VERSION%...
+echo [6/6] Publicando GitHub Release v%APP_VERSION%...
 where gh >NUL 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo AVISO: GitHub CLI ^(gh^) nao encontrado. Publique manualmente.
@@ -105,11 +141,12 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 git tag "v%APP_VERSION%" 2>NUL
+git push origin "v%APP_VERSION%" 2>NUL
 
 gh release create "v%APP_VERSION%" ^
   "dist\AutoTriggerV10.exe#AutoTriggerV10.exe" ^
   --title "v%APP_VERSION%" ^
-  --generate-notes 2>NUL
+  --notes-file RELEASE_NOTES.md 2>NUL
 
 if exist "dist\AutoTriggerV10_Setup_v%APP_VERSION%.exe" (
     gh release upload "v%APP_VERSION%" ^

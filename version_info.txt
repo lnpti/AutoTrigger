@@ -4,8 +4,8 @@
 
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 3, 2, 0),
-    prodvers=(2, 3, 2, 0),
+    filevers=(2, 3, 3, 0),
+    prodvers=(2, 3, 3, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -20,12 +20,12 @@ VSVersionInfo(
         [
           StringStruct(u'CompanyName',      u'RobsonDV'),
           StringStruct(u'FileDescription',  u'AutoTrigger V10 - Automacao de Disparos'),
-          StringStruct(u'FileVersion',      u'2.3.2.0'),
+          StringStruct(u'FileVersion',      u'2.3.3.0'),
           StringStruct(u'InternalName',     u'AutoTriggerV10'),
           StringStruct(u'LegalCopyright',   u'© 2026 RobsonDV'),
           StringStruct(u'OriginalFilename', u'AutoTriggerV10.exe'),
           StringStruct(u'ProductName',      u'AutoTrigger V10'),
-          StringStruct(u'ProductVersion',   u'2.3.2'),
+          StringStruct(u'ProductVersion',   u'2.3.3'),
         ]
       )
     ]),
