@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.spec
+
+# PyInstaller output
+*.exe
+*.app
+dist/
+build/
+*.spec
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+logs/
+
+# Artefatos de runtime do config (backup/atômico)
+config.json.bak
+config.json.tmp
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Configuração local com dados sensíveis — não versionar config.json de produção
+# Descomente a linha abaixo se quiser ignorar o config.json (guarda device IDs e paths pessoais)
+# config.json
+
+# Arquivos de áudio pesados
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.aac
+
+# Cache VLC
+*.vlc

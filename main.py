@@ -1,0 +1,144 @@
+"""
+AutoTrigger V10 — Entry point (PySide6/Qt).
+Inicializa logging, backend, ponte de threads, janela e bandeja.
+"""
+import sys
+import os
+
+# Compatibilidade com PyInstaller (recursos bundled)
+if getattr(sys, "frozen", False):
+    BASE_DIR = sys._MEIPASS  # type: ignore[attr-defined]
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _setup_bundled_vlc():
+    """Aponta o python-vlc para o libVLC embutido no .exe (antes de importar vlc)."""
+    if not getattr(sys, "frozen", False):
+        return
+    libvlc = os.path.join(BASE_DIR, "libvlc.dll")
+    plugins = os.path.join(BASE_DIR, "plugins")
+    if os.path.exists(libvlc):
+        os.environ["PYTHON_VLC_LIB_PATH"] = libvlc
+        os.environ["PATH"] = BASE_DIR + os.pathsep + os.environ.get("PATH", "")
+        try:
+            os.add_dll_directory(BASE_DIR)
+        except Exception:
+            pass
+    if os.path.isdir(plugins):
+        os.environ["PYTHON_VLC_MODULE_PATH"] = plugins
+        os.environ["VLC_PLUGIN_PATH"] = plugins
+
+
+_setup_bundled_vlc()
+
+# COM antes de qualquer import de pycaw
+import comtypes
+try:
+    comtypes.CoInitialize()
+except OSError:
+    pass
+
+import applog
+applog.init()
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QAction, QGuiApplication
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+
+# Em telas com escala fracionária (125%, 150%, 175%), a política padrão do Qt
+# arredonda o fator de escala (ex.: 125% -> 100%) para o layout dos widgets,
+# mas o texto é desenhado na escala real do Windows -> campos/labels desalinhados.
+# PassThrough usa o fator real (1.25x) tanto no layout quanto no texto.
+QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+    Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+)
+
+from config import Config
+import audio_manager as _audio
+from player import AudioPlayer
+from file_monitor import FileMonitor
+from sequence_engine import SequenceEngine
+from ui.theme import apply_theme
+from ui.qt_bridge import EngineBridge
+from ui.main_window import MainWindow, _asset_icon
+
+
+def _build_tray(app, window, on_quit) -> QSystemTrayIcon:
+    icon = _asset_icon() or window.windowIcon()
+    tray = QSystemTrayIcon(icon, parent=app)
+    tray.setToolTip("AutoTrigger V10")
+    menu = QMenu()
+    act_open = QAction("Abrir", menu)
+    act_open.triggered.connect(lambda: (window.showNormal(), window.raise_(),
+                                        window.activateWindow()))
+    act_quit = QAction("Sair", menu)
+    act_quit.triggered.connect(on_quit)
+    menu.addAction(act_open)
+    menu.addSeparator()
+    menu.addAction(act_quit)
+    tray.setContextMenu(menu)
+
+    def _activated(reason):
+        if reason == QSystemTrayIcon.Trigger:  # clique simples
+            window.showNormal(); window.raise_(); window.activateWindow()
+
+    tray.activated.connect(_activated)
+    tray.show()
+    return tray
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)  # fecha p/ bandeja
+    apply_theme(app)
+    ico = _asset_icon()
+    if ico:
+        app.setWindowIcon(ico)
+
+    config = Config()
+    player = AudioPlayer()
+    file_monitor = FileMonitor()
+    engine = SequenceEngine(config, player, file_monitor)
+
+    # Ponte de threads: callbacks do backend → signals na GUI thread
+    bridge = EngineBridge()
+    applog.set_ui_sink(bridge.on_log)
+    engine.set_log(applog.log)
+    try:
+        player.set_log(applog.log)
+    except Exception:
+        pass
+    engine.set_on_runner_update(bridge.on_runner_update)
+    engine.set_on_tick(bridge.on_tick)
+
+    window = MainWindow(config=config, engine=engine, player=player)
+    bridge.runner_update.connect(window.on_runner_update)
+    bridge.tick.connect(window.on_tick)
+    bridge.log_message.connect(window.on_log)
+
+    # Verificação VLC
+    if not player.is_vlc_available():
+        window.on_log("AVISO: VLC não disponível. Reprodução/stream desabilitados.", "error")
+
+    def _quit():
+        try:
+            file_monitor.stop()
+            engine.cancel_all()
+            engine.stop_monitor()
+            _audio.restore_app_mutes()
+            player.release()
+        except Exception:
+            pass
+        tray.hide()
+        app.quit()
+
+    window._quit_fn = _quit
+    tray = _build_tray(app, window, _quit)
+
+    window.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

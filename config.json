@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "global": {
+    "txt_file_path": "C:/Users/User/Downloads/MidiaAtual.txt",
+    "default_input_device_id": "{0.0.1.00000000}.{2a24c533-249e-4725-8743-197ba474ac03}",
+    "default_input_device_name": "Microfone (RODECaster Pro Stereo)",
+    "default_output_device_id": "{0.0.0.00000000}.{26e07ddf-8bb3-415e-835b-a63ee090dfba}",
+    "default_output_device_name": "Alto-falantes (RODECaster Pro Stereo)",
+    "email": {
+      "enabled": false,
+      "smtp_host": "",
+      "smtp_port": 587,
+      "use_tls": true,
+      "username": "",
+      "password": "",
+      "from_addr": "",
+      "to_addrs": "",
+      "events": {
+        "start": true,
+        "done": true,
+        "error": true,
+        "stream_reconnect": true
+      }
+    }
+  },
+  "sequences": [
+    {
+      "id": "162baf0a",
+      "name": "Jornada Esportiva",
+      "keyword_trigger": "ESPORTE",
+      "enabled": true,
+      "steps": [
+        {
+          "type": "mute",
+          "device_id": "{0.0.1.00000000}.{2a24c533-249e-4725-8743-197ba474ac03}",
+          "device_name": "Microfone (RODECaster Pro Stereo)",
+          "label": "Mute Entrada"
+        },
+        {
+          "type": "hotkey",
+          "hotkey": "f11",
+          "label": "STOP"
+        },
+        {
+          "type": "play_audio",
+          "file": "E:/Playlist Pajé/VHT TERRA FM/VHT TERRA FM - 97,7 CARIMBO_4 (ACCAPELA).mp3",
+          "label": "Vinheta Entrada"
+        },
+        {
+          "type": "stream",
+          "url": "https://8033.brasilstream.com.br/stream.m3u",
+          "duration_seconds": 30,
+          "label": "Streaming"
+        },
+        {
+          "type": "play_audio",
+          "file": "E:/Playlist Pajé/VHT TERRA FM/VHT TERRA FM - A MELHOR DA REGIAO (FEM).mp3",
+          "label": "Vinheta Saída"
+        },
+        {
+          "type": "hotkey",
+          "hotkey": "f9",
+          "label": "PLAY"
+        },
+        {
+          "type": "wait_keyword",
+          "keyword": "FIM_ESPORTE",
+          "label": "Aguardar FIM_ESPORTE"
+        },
+        {
+          "type": "hotkey",
+          "hotkey": "f11",
+          "label": "STOP Retorno"
+        },
+        {
+          "type": "unmute",
+          "device_id": "{0.0.1.00000000}.{2a24c533-249e-4725-8743-197ba474ac03}",
+          "device_name": "Microfone (RODECaster Pro Stereo)",
+          "label": "Unmute Entrada"
+        }
+      ],
+      "trigger_delay_seconds": 0,
+      "schedule": {
+        "mode": "always",
+        "weekdays": [],
+        "dates": []
+      }
+    }
+  ]
+}
