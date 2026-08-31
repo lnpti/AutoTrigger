@@ -45,6 +45,11 @@ applog.init()
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QAction, QGuiApplication
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
+
+# Nome do canal local usado para detectar instância já em execução (ver
+# _activate_running_instance / _SingleInstanceServer abaixo).
+_SINGLE_INSTANCE_KEY = "AutoTriggerV10_SingleInstance"
 
 # Em telas com escala fracionária (125%, 150%, 175%), a política padrão do Qt
 # arredonda o fator de escala (ex.: 125% -> 100%) para o layout dos widgets,
@@ -62,6 +67,49 @@ from sequence_engine import SequenceEngine
 from ui.theme import apply_theme
 from ui.qt_bridge import EngineBridge
 from ui.main_window import MainWindow, _asset_icon
+
+
+def _activate_running_instance() -> bool:
+    """
+    Tenta avisar uma instância já em execução para se mostrar (via socket
+    local nomeado). Retorna True se conseguiu -- nesse caso, ESTE processo
+    (a instância nova) deve encerrar sem abrir mais nada.
+    """
+    socket = QLocalSocket()
+    socket.connectToServer(_SINGLE_INSTANCE_KEY)
+    if socket.waitForConnected(200):
+        socket.write(b"show")
+        socket.flush()
+        socket.waitForBytesWritten(200)
+        socket.disconnectFromServer()
+        return True
+    return False
+
+
+def _start_single_instance_server(on_show) -> QLocalServer:
+    """
+    Escuta no canal local: quando uma nova instância tentar abrir (e desistir
+    via _activate_running_instance), chama `on_show()` nesta instância.
+    Precisa manter a referência retornada viva até o app fechar.
+    """
+    # Remove um socket "órfão" deixado por uma execução anterior que crashou
+    # sem fechar limpo (senão o listen() abaixo falharia achando que já tem
+    # uma instância rodando).
+    QLocalServer.removeServer(_SINGLE_INSTANCE_KEY)
+    server = QLocalServer()
+    server.listen(_SINGLE_INSTANCE_KEY)
+
+    def _on_new_connection():
+        conn = server.nextPendingConnection()
+        if conn is None:
+            return
+        conn.waitForReadyRead(200)
+        conn.readAll()
+        conn.disconnectFromServer()
+        on_show()
+
+    server.newConnection.connect(_on_new_connection)
+    return server
 
 
 def _build_tray(app, window, on_quit) -> QSystemTrayIcon:
@@ -91,6 +139,12 @@ def _build_tray(app, window, on_quit) -> QSystemTrayIcon:
 def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # fecha p/ bandeja
+
+    if _activate_running_instance():
+        # Já tem uma instância rodando (ícone na bandeja) -- ela acabou de
+        # ser avisada pra se mostrar. Não abre uma segunda janela/instância.
+        return
+
     apply_theme(app)
     ico = _asset_icon()
     if ico:
@@ -123,6 +177,10 @@ def main():
 
     def _quit():
         try:
+            single_instance_server.close()
+        except Exception:
+            pass
+        try:
             file_monitor.stop()
             engine.cancel_all()
             engine.stop_monitor()
@@ -135,6 +193,9 @@ def main():
 
     window._quit_fn = _quit
     tray = _build_tray(app, window, _quit)
+    single_instance_server = _start_single_instance_server(
+        lambda: (window.showNormal(), window.raise_(), window.activateWindow())
+    )
 
     window.show()
     sys.exit(app.exec())

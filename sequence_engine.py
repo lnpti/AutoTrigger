@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Callable, Dict, Optional
 
 import emailer
+import telegram_notifier
 from step_runner import StepRunner
 from sequence_runner import SequenceRunner, RunnerState
 from file_monitor import FileMonitor
@@ -179,25 +180,6 @@ class SequenceEngine:
         return _waiter
 
     def _on_state(self, seq_id: str, state: RunnerState, step_idx: int):
-        self._maybe_email_state(seq_id, state, step_idx)
-        if self._on_runner_update:
-            self._on_runner_update(seq_id, state.value, step_idx)
-
-    # ── alertas por email ──────────────────────────────────────────────────────
-
-    def _email_cfg(self) -> dict:
-        return self._config.get_global().get("email", {}) or {}
-
-    def _seq_name(self, seq_id: str) -> str:
-        seq = self._config.get_sequence_by_id(seq_id)
-        return seq.get("name", seq_id) if seq else seq_id
-
-    def _maybe_email_state(self, seq_id: str, state: RunnerState, step_idx: int):
-        """Dispara emails de início/fim/erro conforme a config. Ignora ensaios."""
-        runner = self._runners.get(seq_id)
-        if runner is not None and runner.is_dry_run:
-            return
-
         # Rastreia a sequência atualmente em execução p/ contextualizar o stream.
         if state == RunnerState.RUNNING and step_idx == -1:
             self._streaming_seq_id = seq_id
@@ -205,45 +187,84 @@ class SequenceEngine:
             if self._streaming_seq_id == seq_id:
                 self._streaming_seq_id = None
 
-        cfg = self._email_cfg()
-        if not (cfg.get("enabled") and emailer.is_configured(cfg)):
-            return
-        events = cfg.get("events", {})
+        runner = self._runners.get(seq_id)
+        if runner is None or not runner.is_dry_run:  # ignora ensaios
+            self._maybe_email_state(seq_id, state, step_idx)
+            self._maybe_telegram_state(seq_id, state, step_idx)
+        if self._on_runner_update:
+            self._on_runner_update(seq_id, state.value, step_idx)
 
+    # ── alertas por email / telegram ─────────────────────────────────────────────
+
+    def _email_cfg(self) -> dict:
+        return self._config.get_global().get("email", {}) or {}
+
+    def _telegram_cfg(self) -> dict:
+        return self._config.get_global().get("telegram", {}) or {}
+
+    def _seq_name(self, seq_id: str) -> str:
+        seq = self._config.get_sequence_by_id(seq_id)
+        return seq.get("name", seq_id) if seq else seq_id
+
+    def _state_message(self, seq_id: str, state: RunnerState, step_idx: int):
+        """Retorna (event_key, título, texto) para o estado, ou None se não notifica."""
         name = self._seq_name(seq_id)
         ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-        if state == RunnerState.RUNNING and step_idx == -1 and events.get("start"):
-            self._send_email(cfg, f"▶ Disparo iniciado: {name}",
-                             f"A sequência '{name}' iniciou em {ts}.")
-        elif state == RunnerState.DONE and events.get("done"):
-            self._send_email(cfg, f"✅ Disparo concluído: {name}",
-                             f"A sequência '{name}' foi concluída em {ts}.")
-        elif state in (RunnerState.ERROR, RunnerState.CANCELLED) and events.get("error"):
+        if state == RunnerState.RUNNING and step_idx == -1:
+            return "start", f"▶ Disparo iniciado: {name}", f"A sequência '{name}' iniciou em {ts}."
+        elif state == RunnerState.DONE:
+            return "done", f"✅ Disparo concluído: {name}", f"A sequência '{name}' foi concluída em {ts}."
+        elif state in (RunnerState.ERROR, RunnerState.CANCELLED):
             motivo = "falhou" if state == RunnerState.ERROR else "foi cancelada"
-            self._send_email(cfg, f"⚠ Disparo {motivo}: {name}",
-                             f"A sequência '{name}' {motivo} em {ts} "
-                             f"(etapa {step_idx + 1}).")
+            return ("error", f"⚠ Disparo {motivo}: {name}",
+                    f"A sequência '{name}' {motivo} em {ts} (etapa {step_idx + 1}).")
+        return None
+
+    def _maybe_email_state(self, seq_id: str, state: RunnerState, step_idx: int):
+        """Dispara emails de início/fim/erro conforme a config."""
+        cfg = self._email_cfg()
+        if not (cfg.get("enabled") and emailer.is_configured(cfg)):
+            return
+        msg = self._state_message(seq_id, state, step_idx)
+        if msg and cfg.get("events", {}).get(msg[0]):
+            _, subject, body = msg
+            emailer.notify_async(cfg, subject, body, log=self._log_fn)
+
+    def _maybe_telegram_state(self, seq_id: str, state: RunnerState, step_idx: int):
+        """Dispara mensagens Telegram de início/fim/erro conforme a config."""
+        cfg = self._telegram_cfg()
+        if not (cfg.get("enabled") and telegram_notifier.is_configured(cfg)):
+            return
+        msg = self._state_message(seq_id, state, step_idx)
+        if msg and cfg.get("events", {}).get(msg[0]):
+            _, subject, body = msg
+            telegram_notifier.notify_async(cfg, f"{subject}\n{body}", log=self._log_fn)
 
     def _on_stream_event(self, kind: str, detail: str):
         """Handler do watchdog do player (queda/reconexão de stream)."""
         name = self._seq_name(self._streaming_seq_id) if self._streaming_seq_id else "Stream"
         ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        cfg = self._email_cfg()
-        if not (cfg.get("enabled") and emailer.is_configured(cfg)):
-            return
-        if not cfg.get("events", {}).get("stream_reconnect"):
-            return
-        if kind == "dropped":
-            self._send_email(cfg, f"⚠ Stream caiu: {name}",
-                             f"O stream da sequência '{name}' caiu em {ts} ({detail}). "
-                             f"O app está tentando reconectar automaticamente.")
-        elif kind == "recovered":
-            self._send_email(cfg, f"✓ Stream reconectado: {name}",
-                             f"O stream da sequência '{name}' foi reconectado em {ts} ({detail}).")
 
-    def _send_email(self, cfg: dict, subject: str, body: str):
-        emailer.notify_async(cfg, subject, body, log=self._log_fn)
+        if kind == "dropped":
+            subject = f"⚠ Stream caiu: {name}"
+            body = (f"O stream da sequência '{name}' caiu em {ts} ({detail}). "
+                    f"O app está tentando reconectar automaticamente.")
+        elif kind == "recovered":
+            subject = f"✓ Stream reconectado: {name}"
+            body = f"O stream da sequência '{name}' foi reconectado em {ts} ({detail})."
+        else:
+            return
+
+        email_cfg = self._email_cfg()
+        if (email_cfg.get("enabled") and emailer.is_configured(email_cfg)
+                and email_cfg.get("events", {}).get("stream_reconnect")):
+            emailer.notify_async(email_cfg, subject, body, log=self._log_fn)
+
+        tg_cfg = self._telegram_cfg()
+        if (tg_cfg.get("enabled") and telegram_notifier.is_configured(tg_cfg)
+                and tg_cfg.get("events", {}).get("stream_reconnect")):
+            telegram_notifier.notify_async(tg_cfg, f"{subject}\n{body}", log=self._log_fn)
 
     def _on_runner_tick(self, seq_id: str, step_idx: int, elapsed: float, total: float):
         if self._on_tick:

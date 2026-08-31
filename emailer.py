@@ -80,8 +80,8 @@ def notify_async(cfg: dict, subject: str, body: str, log=None) -> None:
         ok, err = send_email(cfg, subject, body)
         if log:
             if ok:
-                log(f"📧 Email enviado: {subject}", "info")
+                log(f"📧 E-mail enviado: {subject}", "info")
             else:
-                log(f"📧 Falha ao enviar email: {err}", "warn")
+                log(f"📧 Falha ao enviar e-mail: {err}", "warn")
 
     threading.Thread(target=_run, daemon=True, name="emailer").start()

@@ -13,6 +13,8 @@ import os
 import sys
 from typing import Dict, Optional
 
+import applog
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -89,6 +91,15 @@ class SequenceCard(QFrame):
 
 
 class MainWindow(QMainWindow):
+    # Updater.check_async roda a checagem de atualização numa thread de
+    # background e chama o callback direto dali -- tocar widgets ou abrir um
+    # QDialog.exec() fora da GUI thread é inválido no Qt (causa diálogos em
+    # branco/travados ou crash). Os signals abaixo levam o resultado até a
+    # GUI thread de forma segura antes de mexer na UI.
+    _update_found = Signal(object)       # UpdateInfo -> só atualiza o badge
+    _update_found_open = Signal(object)  # UpdateInfo -> badge + abre o diálogo
+    _update_text = Signal(str)           # texto simples do botão de update
+
     def __init__(self, config, engine, player):
         super().__init__()
         self._config = config
@@ -106,6 +117,10 @@ class MainWindow(QMainWindow):
         ico = _asset_icon()
         if ico:
             self.setWindowIcon(ico)
+
+        self._update_found.connect(self._show_update_badge)
+        self._update_found_open.connect(self._on_update_found_open)
+        self._update_text.connect(self._set_update_text)
 
         self._build()
         self._load_sequences()
@@ -135,7 +150,12 @@ class MainWindow(QMainWindow):
             on_deleted=self._delete_sequence,
             on_duplicated=self._duplicate_sequence,
         )
-        self._global = GlobalSettings(self._config, self._on_global_saved, log=self.on_log)
+        # applog.log (não self.on_log): "Enviar email de teste" dispara
+        # emailer.notify_async numa thread de background, que chama esse
+        # callback dali -- precisa ser thread-safe (applog.log grava no
+        # arquivo e repassa pro sink de UI via signal, não toca o LogView
+        # direto como self.on_log faria).
+        self._global = GlobalSettings(self._config, self._on_global_saved, log=applog.log)
         # Em telas com escala do Windows alta (125%+), o conteúdo de
         # Configurações Globais pode ficar mais alto que a janela. Sem rolagem,
         # o Qt comprime as linhas para caber no espaço fixo (campos cortados/
@@ -425,9 +445,15 @@ class MainWindow(QMainWindow):
     def _init_updater(self):
         try:
             from updater import Updater
-            self._updater = Updater(log_callback=self.on_log)
+            # log_callback roda em threads de background (check/apply do
+            # updater); applog.log() já é seguro pra chamar de qualquer
+            # thread (grava no arquivo e repassa pro sink de UI, que é o
+            # EngineBridge -- emite signal, não toca widget direto). Nunca
+            # passar self.on_log direto aqui: ele mexe no LogView sem
+            # marshaling e trava/crasha vindo de outra thread.
+            self._updater = Updater(log_callback=applog.log)
             self._updater.check_async(
-                on_update_available=lambda info: self._show_update_badge(info)
+                on_update_available=lambda info: self._update_found.emit(info)
             )
         except Exception as exc:
             self.on_log(f"Auto-update: {exc}", "warn")
@@ -438,6 +464,13 @@ class MainWindow(QMainWindow):
         self._update_btn.setObjectName("primary")
         self._restyle(self._update_btn)
 
+    def _on_update_found_open(self, info):
+        self._show_update_badge(info)
+        self._open_update_dialog(info)
+
+    def _set_update_text(self, text: str):
+        self._update_btn.setText(text)
+
     def _check_updates_manual(self):
         if self._pending_update:
             self._open_update_dialog(self._pending_update)
@@ -446,10 +479,9 @@ class MainWindow(QMainWindow):
             return
         self._update_btn.setText("Verificando…")
         self._updater.check_async(
-            on_update_available=lambda info: [self._show_update_badge(info),
-                                              self._open_update_dialog(info)],
-            on_up_to_date=lambda: self._update_btn.setText(f"v{__version__} ✓"),
-            on_error=lambda _e: self._update_btn.setText(f"v{__version__}"),
+            on_update_available=lambda info: self._update_found_open.emit(info),
+            on_up_to_date=lambda: self._update_text.emit(f"v{__version__} ✓"),
+            on_error=lambda _e: self._update_text.emit(f"v{__version__}"),
         )
 
     def _open_update_dialog(self, info):

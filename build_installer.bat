@@ -83,6 +83,7 @@ python -m PyInstaller ^
   --hidden-import "win32gui" ^
   --hidden-import "win32con" ^
   --hidden-import "PySide6.QtSvg" ^
+  --hidden-import "PySide6.QtNetwork" ^
   --exclude-module "PySide6.QtQml" ^
   --exclude-module "PySide6.QtQuick" ^
   --exclude-module "PySide6.QtQuick3D" ^

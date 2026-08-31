@@ -84,6 +84,18 @@ DEFAULT_EMAIL = {
     },
 }
 
+DEFAULT_TELEGRAM = {
+    "enabled": False,
+    "bot_token": "",
+    "chat_id": "",
+    "events": {
+        "start": True,
+        "done": True,
+        "error": True,
+        "stream_reconnect": True,
+    },
+}
+
 DEFAULT_GLOBAL = {
     "txt_file_path": "",
     "default_input_device_id": "",
@@ -91,6 +103,7 @@ DEFAULT_GLOBAL = {
     "default_output_device_id": "",
     "default_output_device_name": "",
     "email": dict(DEFAULT_EMAIL),
+    "telegram": dict(DEFAULT_TELEGRAM),
 }
 
 
@@ -194,6 +207,14 @@ class Config:
         events = email.setdefault("events", dict(DEFAULT_EMAIL["events"]))
         for key, default in DEFAULT_EMAIL["events"].items():
             events.setdefault(key, default)
+        # Garante subchaves do telegram (ex.: 'events') em configs parciais.
+        telegram = g.setdefault("telegram", dict(DEFAULT_TELEGRAM))
+        for key, default in DEFAULT_TELEGRAM.items():
+            if key not in telegram:
+                telegram[key] = dict(default) if isinstance(default, dict) else default
+        tg_events = telegram.setdefault("events", dict(DEFAULT_TELEGRAM["events"]))
+        for key, default in DEFAULT_TELEGRAM["events"].items():
+            tg_events.setdefault(key, default)
 
     def _read_file(self, path: str):
         if not os.path.exists(path):

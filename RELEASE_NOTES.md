@@ -1,29 +1,36 @@
-## AutoTrigger V10 — v2.3.5
+## AutoTrigger V10 — v2.3.6
+
+### Novidade
+
+- **Alertas por Telegram**, nova seção em Configurações Globais (ao lado dos
+  alertas por e-mail): token do bot + chat ID, os mesmos eventos disparadores
+  (início/fim/erro/queda de stream) e botão de teste. Basta falar com
+  `@BotFather` no Telegram para criar um bot e pegar o token, e com
+  `@userinfobot` para descobrir o chat ID.
 
 ### Correções
 
-- **App podia fechar sozinho ao clicar em "Baixar e Instalar" (atualização):**
-  o progresso do download atualizava a tela a partir de uma thread em segundo
-  plano de um jeito que não é seguro no Qt (mexia direto nos widgets em vez
-  de usar o mecanismo de sinal/slot), o que podia derrubar o app no meio do
-  download de arquivos grandes. Corrigido usando o padrão correto (thread-safe)
-  já usado no resto do app.
-- **Hotkey de janela alvo podia falhar em silêncio após o protetor de tela:**
-  quando o protetor de tela ativava durante uma sequência longa (ex.: stream
-  de horas), o app conseguia encerrá-lo, mas a troca de foco para a janela
-  alvo (para enviar a hotkey de PLAY, por exemplo) podia ser bloqueada pelo
-  Windows sem gerar erro — a proteção "antirroubo de foco" do Windows deixa a
-  `SetForegroundWindow` só piscar o ícone na barra de tarefas em vez de focar
-  de verdade. O log mostrava "sucesso", mas a hotkey ia para a janela errada.
-  Corrigido usando `AttachThreadInput` (a técnica padrão do Windows para
-  forçar a troca de foco de forma confiável) e confirmando se o foco
-  realmente aconteceu antes de enviar a tecla — se não conseguir confirmar,
-  agora aparece um aviso no log.
-- Mensagens de diagnóstico de hotkey (protetor de tela, janela não
-  encontrada, foco não confirmado) agora vão para o log real do app.
+- **Abrir o app de novo enquanto já está rodando abria uma segunda instância**
+  (em vez de só mostrar a janela já aberta na bandeja). Agora, se já houver
+  uma instância rodando, a nova apenas avisa a existente para se mostrar
+  (`showNormal` + foco) e se encerra sozinha.
+- **Diálogo de "Atualização Disponível" podia travar em branco ("Não está
+  respondendo")** ao ser aberto pela checagem manual: o resultado da checagem
+  de atualização (que roda em thread de background) abria o diálogo direto
+  dessa thread, o que é inválido no Qt — corrigido levando o resultado até a
+  GUI thread via signal antes de abrir a janela.
+- Corrigido o mesmo tipo de problema no botão **"Enviar e-mail de teste"**
+  (usava o log da UI direto de uma thread de background).
+- Botão "Enviar e-mail de teste" quase invisível (estilo fraco demais) —
+  agora com contraste normal.
+- Correção de ortografia: "email" → "e-mail" em toda a interface.
 
-### Correções anteriores (v2.3.2 / v2.3.3)
+### Correções anteriores (v2.3.4 / v2.3.5)
 
+- App podia fechar sozinho ao clicar em "Baixar e Instalar" (mesma causa-raiz
+  de thread-safety do Qt, na barra de progresso do download).
+- Hotkey de janela alvo podia falhar em silêncio após o protetor de tela
+  (`AttachThreadInput` + confirmação de foco).
 - Campos desconfigurados em telas com escala 125% (DPI `PassThrough` +
-  rolagem na tela de Configurações Globais).
+  rolagem em Configurações Globais).
 - Novo ícone e marca "AutoTrigger" na barra superior.
