@@ -4,7 +4,7 @@ Este arquivo e a unica fonte da versao -- nao editar manualmente.
 O build.bat e o sistema de auto-update usam este valor.
 """
 
-__version__ = "2.3.3"
+__version__ = "2.3.4"
 
 # Repositório GitHub usado pelo auto-updater
 GITHUB_REPO = "lnpti/AutoTrigger"

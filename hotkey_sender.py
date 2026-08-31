@@ -10,6 +10,8 @@ Envio e captura de hotkeys globais do sistema.
 import ctypes
 import time
 
+import applog
+
 SPI_GETSCREENSAVERRUNNING = 0x0072
 
 
@@ -37,7 +39,7 @@ def _dismiss_screensaver():
     """
     if not _is_screensaver_running():
         return
-    print("[HotkeySender] Protetor de tela ativo — tentando encerrar antes da hotkey.")
+    applog.log("Protetor de tela ativo — encerrando antes da hotkey.", "warn")
     try:
         import win32api
         x, y = win32api.GetCursorPos()
@@ -45,15 +47,15 @@ def _dismiss_screensaver():
         time.sleep(0.05)
         win32api.SetCursorPos((x, y))
     except Exception as exc:
-        print(f"[HotkeySender] Falha ao simular atividade do mouse: {exc}")
+        applog.log(f"Falha ao simular atividade do mouse: {exc}", "warn")
         return
     for _ in range(20):  # até ~2s para o protetor fechar
         if not _is_screensaver_running():
             return
         time.sleep(0.1)
     if _is_screensaver_running():
-        print("[HotkeySender] Protetor de tela continua ativo (provável tela de "
-              "login/bloqueio) — a hotkey pode não chegar à janela alvo.")
+        applog.log("Protetor de tela continua ativo (provável tela de login/"
+                    "bloqueio) — a hotkey pode não chegar à janela alvo.", "warn")
 
 
 def send_hotkey(hotkey_str: str) -> bool:
@@ -71,7 +73,7 @@ def send_hotkey(hotkey_str: str) -> bool:
         keyboard.send(hotkey_str)
         return True
     except Exception as exc:
-        print(f"[HotkeySender] Erro ao enviar hotkey '{hotkey_str}': {exc}")
+        applog.log(f"Erro ao enviar hotkey '{hotkey_str}': {exc}", "error")
         return False
 
 
@@ -92,27 +94,33 @@ def send_hotkey_to_window(hotkey_str: str, window_title: str) -> bool:
         import win32gui
         import win32con
     except Exception:
-        print("[HotkeySender] pywin32 indisponível — enviando para janela ativa.")
+        applog.log("pywin32 indisponível — enviando para janela ativa.", "warn")
         return send_hotkey(hotkey_str)
 
     _dismiss_screensaver()
 
     hwnd = _find_window(window_title)
     if not hwnd:
-        print(f"[HotkeySender] Janela '{window_title}' não encontrada — "
-              f"enviando para janela ativa.")
+        applog.log(f"Janela '{window_title}' não encontrada — enviando para "
+                    f"janela ativa.", "warn")
         return send_hotkey(hotkey_str)
 
     prev = win32gui.GetForegroundWindow()
     try:
-        _focus_window(hwnd)
+        focused = _focus_window(hwnd)
+        if not focused:
+            applog.log(
+                f"Não foi possível confirmar o foco na janela '{window_title}' "
+                f"(o Windows pode ter bloqueado a troca de foco) — a hotkey "
+                f"pode não chegar lá.", "warn"
+            )
         time.sleep(0.12)
         import keyboard
         keyboard.send(hotkey_str)
         time.sleep(0.08)
         return True
     except Exception as exc:
-        print(f"[HotkeySender] Erro ao enviar para '{window_title}': {exc}")
+        applog.log(f"Erro ao enviar para '{window_title}': {exc}", "error")
         return False
     finally:
         # Devolve o foco à janela anterior
@@ -165,24 +173,63 @@ def _find_window(title_substr: str):
     return match[0] if match else None
 
 
-def _focus_window(hwnd):
-    """Restaura (se minimizada) e traz a janela ao primeiro plano."""
+def _focus_window(hwnd) -> bool:
+    """
+    Restaura (se minimizada) e traz a janela ao primeiro plano. Retorna True
+    se o foco foi realmente confirmado.
+
+    O Windows bloqueia processos em segundo plano de "roubar" o foco de outro
+    app (proteção antifoco-stealing) -- nesse caso `SetForegroundWindow` só
+    pisca o ícone na barra de tarefas e retorna sucesso sem lançar exceção,
+    então o app achava que tinha focado quando na verdade não tinha (a hotkey
+    ia pra janela errada, silenciosamente). Isso fica mais provável logo após
+    dispensar o protetor de tela, já que o "último input real" não veio do
+    usuário. `AttachThreadInput` contorna essa proteção de forma confiável:
+    ao anexar a thread deste processo à thread da janela em foco atual (e à
+    da janela alvo), o Windows trata os dois como "o mesmo input source" e
+    permite a troca de foco de verdade.
+    """
     import win32gui
     import win32con
+    import win32process
+    import win32api
+
     try:
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     except Exception:
         pass
+
+    cur_thread = win32api.GetCurrentThreadId()
+    fg_hwnd = win32gui.GetForegroundWindow()
+    fg_thread = win32process.GetWindowThreadProcessId(fg_hwnd)[0] if fg_hwnd else 0
+    target_thread = win32process.GetWindowThreadProcessId(hwnd)[0]
+
+    attached = []
+    for tid in (fg_thread, target_thread):
+        if tid and tid != cur_thread:
+            try:
+                win32process.AttachThreadInput(cur_thread, tid, True)
+                attached.append(tid)
+            except Exception:
+                pass
     try:
-        win32gui.SetForegroundWindow(hwnd)
-    except Exception:
-        # SetForegroundWindow pode falhar por restrições de foco do Windows;
-        # tenta BringWindowToTop como alternativa.
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
         try:
             win32gui.BringWindowToTop(hwnd)
         except Exception:
             pass
+    finally:
+        for tid in attached:
+            try:
+                win32process.AttachThreadInput(cur_thread, tid, False)
+            except Exception:
+                pass
+
+    return win32gui.GetForegroundWindow() == hwnd
 
 
 def capture_hotkey() -> str:
