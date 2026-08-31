@@ -7,8 +7,21 @@ echo  AutoTrigger V10 - Build .EXE + Instalador + Release
 echo ============================================
 echo.
 
+REM -- Fixa a versao do Python usada no build --------------------------------
+REM  NAO usar a versao mais recente do Python (ex.: 3.14): o .exe empacotado
+REM  falha em maquinas que ainda nao tem o runtime C (UCRT) mais novo que ela
+REM  exige ("Failed to load Python DLL ... LoadLibrary: nao foi possivel
+REM  encontrar o modulo especificado"). 3.13 e mais testada/compativel.
+REM  Pode sobrescrever definindo PY antes de chamar este script.
+if "%PY%"=="" (
+    py -3.13 -c "" >NUL 2>&1
+    if !ERRORLEVEL! EQU 0 (set "PY=py -3.13") else (set "PY=python")
+)
+echo Interpretador Python: %PY%
+echo.
+
 REM -- Le a versao direto do version.py ------------------------------------
-for /f "tokens=*" %%i in ('python -c "from version import __version__; print(__version__)"') do set APP_VERSION=%%i
+for /f "tokens=*" %%i in ('%PY% -c "from version import __version__; print(__version__)"') do set APP_VERSION=%%i
 echo Versao detectada: v%APP_VERSION%
 echo.
 
@@ -29,15 +42,15 @@ echo.
 
 REM -- Gera icone e assets do instalador ------------------------------------
 echo [1/6] Gerando icone e imagens do instalador...
-python create_icon.py
+%PY% create_icon.py
 if %ERRORLEVEL% NEQ 0 echo AVISO: Falha ao gerar icone -- usando icone existente.
-python create_wizard_assets.py
+%PY% create_wizard_assets.py
 if %ERRORLEVEL% NEQ 0 echo AVISO: Falha ao gerar assets do wizard -- usando existentes.
 
 REM -- Dependencias -------------------------------------------------------
 echo.
 echo [2/6] Instalando dependencias...
-pip install -r requirements.txt --quiet
+%PY% -m pip install -r requirements.txt --quiet
 if %ERRORLEVEL% NEQ 0 (
     echo ERRO ao instalar dependencias.
     pause
@@ -47,7 +60,7 @@ if %ERRORLEVEL% NEQ 0 (
 REM -- Sincroniza version_info.txt com version.py --------------------------
 echo.
 echo [3/6] Sincronizando version_info.txt (v%APP_VERSION%)...
-python -c "
+%PY% -c "
 import re
 with open('version_info.txt', 'r', encoding='utf-8') as f:
     content = f.read()
@@ -68,7 +81,7 @@ echo.
 echo [4/6] Compilando AutoTriggerV10.exe v%APP_VERSION%...
 echo.
 
-python -m PyInstaller ^
+%PY% -m PyInstaller ^
   --onefile ^
   --windowed ^
   --name "AutoTriggerV10" ^

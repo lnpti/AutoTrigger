@@ -10,8 +10,21 @@ echo  Gera o .exe e o instalador para teste local. Para publicar
 echo  no GitHub Releases tambem, use build.bat.
 echo.
 
+REM -- Fixa a versao do Python usada no build --------------------------------
+REM  NAO usar a versao mais recente do Python (ex.: 3.14): o .exe empacotado
+REM  falha em maquinas que ainda nao tem o runtime C (UCRT) mais novo que ela
+REM  exige ("Failed to load Python DLL ... LoadLibrary: nao foi possivel
+REM  encontrar o modulo especificado"). 3.13 e mais testada/compativel.
+REM  Pode sobrescrever definindo PY antes de chamar este script.
+if "%PY%"=="" (
+    py -3.13 -c "" >NUL 2>&1
+    if !ERRORLEVEL! EQU 0 (set "PY=py -3.13") else (set "PY=python")
+)
+echo Interpretador Python: %PY%
+echo.
+
 REM -- Le a versao direto do version.py ------------------------------------
-for /f "tokens=*" %%i in ('python -c "from version import __version__; print(__version__)"') do set APP_VERSION=%%i
+for /f "tokens=*" %%i in ('%PY% -c "from version import __version__; print(__version__)"') do set APP_VERSION=%%i
 echo Versao: v%APP_VERSION%
 echo.
 
@@ -31,21 +44,21 @@ echo.
 
 REM ── Passo 1: Gerar ícone e assets do wizard ──────────────────────────────
 echo [1/5] Gerando icone e imagens do instalador...
-python create_icon.py
+%PY% create_icon.py
 if %ERRORLEVEL% NEQ 0 (echo ERRO ao gerar icone. & pause & exit /b 1)
-python create_wizard_assets.py
+%PY% create_wizard_assets.py
 if %ERRORLEVEL% NEQ 0 (echo ERRO ao gerar assets do wizard. & pause & exit /b 1)
 echo.
 
 REM ── Passo 2: Instalar dependências ───────────────────────────────────────
 echo [2/5] Instalando dependencias Python...
-pip install -r requirements.txt --quiet
+%PY% -m pip install -r requirements.txt --quiet
 if %ERRORLEVEL% NEQ 0 (echo ERRO ao instalar dependencias. & pause & exit /b 1)
 echo.
 
 REM ── Passo 3: Sincronizar version_info.txt ────────────────────────────────
 echo [3/5] Sincronizando version_info.txt (v%APP_VERSION%)...
-python -c "
+%PY% -c "
 import re
 with open('version_info.txt', 'r', encoding='utf-8') as f:
     content = f.read()
@@ -67,7 +80,7 @@ echo [4/5] Compilando AutoTriggerV10.exe com PyInstaller...
 echo (Isso pode levar alguns minutos)
 echo.
 
-python -m PyInstaller ^
+%PY% -m PyInstaller ^
   --onefile ^
   --windowed ^
   --name "AutoTriggerV10" ^
