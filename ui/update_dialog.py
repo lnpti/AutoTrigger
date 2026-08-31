@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QTextBrowser, QPushButton,
     QProgressBar,
@@ -15,11 +15,19 @@ from ui.theme import COLORS
 
 
 class UpdateDialog(QDialog):
+    # download roda em thread de background (Updater.apply_update) -- o
+    # progresso precisa chegar na GUI thread via signal (thread-safe), nunca
+    # tocando os widgets direto de outra thread (QTimer.singleShot chamado de
+    # fora da GUI thread não é seguro e podia derrubar o processo no meio do
+    # download de arquivos grandes).
+    _progress_changed = Signal(int)
+
     def __init__(self, parent, update_info, on_confirm):
         super().__init__(parent)
         self._info = update_info
         self._on_confirm = on_confirm
         self._downloading = False
+        self._progress_changed.connect(self._on_progress)
 
         self.setWindowTitle("Atualização Disponível")
         self.setMinimumSize(500, 400)
@@ -71,11 +79,11 @@ class UpdateDialog(QDialog):
         self._go.setText("Baixando…")
         self._progress.show()
 
-        def _cb(pct: int):
-            QTimer.singleShot(0, lambda: self._progress.setValue(pct))
-            QTimer.singleShot(0, lambda: self._progress_lbl.setText(f"Baixando… {pct}%"))
-
         threading.Thread(
-            target=lambda: self._on_confirm(self._info, _cb),
+            target=lambda: self._on_confirm(self._info, self._progress_changed.emit),
             daemon=True, name="updater-apply",
         ).start()
+
+    def _on_progress(self, pct: int):
+        self._progress.setValue(pct)
+        self._progress_lbl.setText(f"Baixando… {pct}%")

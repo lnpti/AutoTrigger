@@ -96,8 +96,7 @@ def create_wizard_banner(output_path: str):
         font_small = font_big
 
     draw.text((20, 30), "AutoTrigger V10", font=font_big, fill=(79, 195, 247))
-    draw.text((22, 70), "by RobsonDV", font=font_small, fill=(255, 255, 255))
-    draw.text((22, 105), "Automação de disparos por gatilho", font=font_small, fill=(180, 180, 210))
+    draw.text((22, 75), "Automação de disparos por gatilho", font=font_small, fill=(180, 180, 210))
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     img.save(output_path, "BMP")
