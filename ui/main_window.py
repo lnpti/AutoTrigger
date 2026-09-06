@@ -19,7 +19,8 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QStackedWidget, QScrollArea, QSplitter,
+    QFrame, QStackedWidget, QScrollArea, QSplitter, QListWidget,
+    QListWidgetItem, QAbstractItemView,
 )
 
 from version import __version__
@@ -226,17 +227,35 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(side)
         lay.setContentsMargins(10, 12, 10, 10)
         lay.setSpacing(8)
-        title = QLabel("SEQUÊNCIAS"); title.setObjectName("section")
-        lay.addWidget(title)
 
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
-        host = QWidget()
-        self._cards_box = QVBoxLayout(host)
-        self._cards_box.setContentsMargins(0, 0, 0, 0)
-        self._cards_box.setSpacing(6)
-        self._cards_box.addStretch(1)
-        scroll.setWidget(host)
-        lay.addWidget(scroll, 1)
+        title_bar = QHBoxLayout()
+        title = QLabel("SEQUÊNCIAS"); title.setObjectName("section")
+        title_bar.addWidget(title)
+        title_bar.addStretch(1)
+        sort_btn = QPushButton("A→Z")
+        sort_btn.setObjectName("ghost")
+        sort_btn.setToolTip("Ordenar sequências por nome (A→Z)")
+        sort_btn.clicked.connect(self._sort_sequences_alphabetically)
+        title_bar.addWidget(sort_btn)
+        lay.addLayout(title_bar)
+
+        # QListWidget com arrastar-e-soltar nativo do Qt para reordenar as
+        # sequências (cada item embute um SequenceCard via setItemWidget).
+        self._seq_list = QListWidget()
+        self._seq_list.setObjectName("seq_list")
+        self._seq_list.setDragDropMode(QAbstractItemView.InternalMove)
+        self._seq_list.setSelectionMode(QAbstractItemView.NoSelection)
+        self._seq_list.setFocusPolicy(Qt.NoFocus)
+        self._seq_list.setFrameShape(QFrame.NoFrame)
+        self._seq_list.setSpacing(6)
+        self._seq_list.setStyleSheet(
+            "QListWidget#seq_list { background: transparent; border: none; }"
+            "QListWidget#seq_list::item { border: none; padding: 0px; }"
+        )
+        self._seq_list.model().rowsMoved.connect(
+            lambda *a: QTimer.singleShot(0, self._on_sequences_reordered)
+        )
+        lay.addWidget(self._seq_list, 1)
 
         new_btn = QPushButton("＋  Nova Sequência")
         new_btn.setObjectName("primary")
@@ -291,24 +310,55 @@ class MainWindow(QMainWindow):
     # ── sequences ────────────────────────────────────────────────────────────────
 
     def _load_sequences(self):
-        # limpa
-        for c in self._cards.values():
-            c.deleteLater()
-        self._cards.clear()
+        self._rebuild_seq_list()
         seqs = self._config.get_sequences()
-        for seq in seqs:
-            self._add_card(seq)
-        self._refresh_armed()
         if seqs:
             self._select_seq(seqs[0]["id"])
         else:
             self._stack.setCurrentWidget(self._placeholder)
 
+    def _rebuild_seq_list(self):
+        """Recria os cards na ordem atual do config (após sort ou reload)."""
+        self._seq_list.clear()  # também deleta os SequenceCard (setItemWidget)
+        self._cards.clear()
+        for seq in self._config.get_sequences():
+            self._add_card(seq)
+        self._refresh_armed()
+        if self._selected_id in self._cards:
+            self._cards[self._selected_id].set_selected(True)
+
     def _add_card(self, seq: dict):
         card = SequenceCard(seq, self._select_seq)
-        # insere antes do stretch
-        self._cards_box.insertWidget(self._cards_box.count() - 1, card)
+        item = QListWidgetItem()
+        item.setData(Qt.UserRole, seq["id"])
+        item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+        self._seq_list.addItem(item)
+        self._seq_list.setItemWidget(item, card)
+        item.setSizeHint(card.sizeHint())
         self._cards[seq["id"]] = card
+
+    def _on_sequences_reordered(self):
+        """Drag-and-drop no QListWidget de sequências: o Qt já moveu os
+        cards visualmente -- só precisamos gravar a nova ordem no config."""
+        ordered_ids = [
+            self._seq_list.item(i).data(Qt.UserRole)
+            for i in range(self._seq_list.count())
+        ]
+        ordered_ids = [sid for sid in ordered_ids if sid]
+        if ordered_ids:
+            self._config.reorder_sequences(ordered_ids)
+            self._config.save()
+            self._engine.reload_sequences()
+
+    def _sort_sequences_alphabetically(self):
+        seqs = self._config.get_sequences()
+        ordered_ids = [s["id"] for s in
+                       sorted(seqs, key=lambda s: (s.get("name") or "").strip().lower())]
+        self._config.reorder_sequences(ordered_ids)
+        self._config.save()
+        self._engine.reload_sequences()
+        self._rebuild_seq_list()
+        self.on_log("Sequências ordenadas por nome (A→Z).", "success")
 
     def _select_seq(self, seq_id: str):
         seq = self._config.get_sequence_by_id(seq_id)
@@ -357,8 +407,13 @@ class MainWindow(QMainWindow):
         self._config.save()
         self._engine.reload_sequences()
         if seq_id in self._cards:
-            self._cards[seq_id].deleteLater()
-            del self._cards[seq_id]
+            for i in range(self._seq_list.count()):
+                if self._seq_list.item(i).data(Qt.UserRole) == seq_id:
+                    self._seq_list.takeItem(i)
+                    break
+            card = self._cards.pop(seq_id, None)
+            if card:
+                card.deleteLater()
         self._selected_id = None
         self.on_log(f"Sequência excluída: '{name}'.", "warn")
         remaining = self._config.get_sequences()

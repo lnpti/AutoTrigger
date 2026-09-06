@@ -73,7 +73,7 @@ def _restore_screensaver_and_sleep():
     except Exception:
         pass
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QAction, QGuiApplication
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
@@ -196,6 +196,7 @@ def main():
         player.set_log(applog.log)
     except Exception:
         pass
+    _audio.set_log(applog.log)
     engine.set_on_runner_update(bridge.on_runner_update)
     engine.set_on_tick(bridge.on_tick)
 
@@ -214,14 +215,36 @@ def main():
         except Exception:
             pass
         _restore_screensaver_and_sleep()
+        restored = []
         try:
             file_monitor.stop()
             engine.cancel_all()
             engine.stop_monitor()
-            _audio.restore_app_mutes()
+            restored = _audio.restore_app_mutes()
             player.release()
         except Exception:
             pass
+
+        if restored:
+            # audio_manager.restore_app_mutes() já registrou isso no log
+            # (applog.log, via _audio.set_log) -- aqui só falta o aviso
+            # visual não-bloqueante na bandeja.
+            try:
+                names = ", ".join(d["name"] for d in restored)
+                tray.showMessage(
+                    "AutoTrigger V10",
+                    f"{len(restored)} dispositivo(s) de áudio foram desmutados "
+                    f"ao fechar o app: {names}",
+                    QSystemTrayIcon.Warning,
+                    6000,
+                )
+            except Exception:
+                pass
+            # Dá um tempinho pro aviso da bandeja aparecer antes do processo
+            # encerrar de vez (senão o Windows pode nem chegar a mostrar).
+            QTimer.singleShot(2500, lambda: (tray.hide(), app.quit()))
+            return
+
         tray.hide()
         app.quit()
 

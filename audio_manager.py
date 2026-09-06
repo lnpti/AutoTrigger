@@ -19,6 +19,14 @@ _DEVICE_STATE_ACTIVE = 1
 _muted_by_app: set = set()
 _ledger_lock = threading.Lock()
 
+_log = lambda msg, level="info": print(f"[AudioManager][{level}] {msg}")
+
+
+def set_log(fn):
+    """Define o callback de log (msg, level). Ver applog.log — thread-safe."""
+    global _log
+    _log = fn
+
 
 def _ensure_com():
     """Garante que COM está inicializado na thread atual."""
@@ -45,8 +53,24 @@ def _enumerate_devices(data_flow: EDataFlow) -> list:
             if dev and dev.FriendlyName:
                 result.append({"id": dev.id, "name": dev.FriendlyName})
     except Exception as exc:
-        print(f"[AudioManager] Erro ao enumerar dispositivos ({data_flow}): {exc}")
+        _log(f"Erro ao enumerar dispositivos ({data_flow}): {exc}", "error")
     return result
+
+
+def get_device_name(device_id: str) -> str:
+    """Nome amigável do dispositivo pelo ID, ou o próprio ID se não resolver."""
+    if not device_id:
+        return device_id
+    _ensure_com()
+    try:
+        enumerator = AudioUtilities.GetDeviceEnumerator()
+        imm_device = enumerator.GetDevice(device_id)
+        dev = AudioUtilities.CreateDevice(imm_device)
+        if dev and dev.FriendlyName:
+            return dev.FriendlyName
+    except Exception:
+        pass
+    return device_id
 
 
 def list_input_devices() -> list:
@@ -81,25 +105,28 @@ def set_device_mute(device_id: str, mute: bool) -> bool:
         return True
     except Exception as exc:
         action = "mutar" if mute else "desmutar"
-        print(f"[AudioManager] Erro ao {action} dispositivo '{device_id}': {exc}")
+        _log(f"Erro ao {action} dispositivo '{device_id}': {exc}", "error")
         return False
 
 
-def restore_app_mutes() -> int:
+def restore_app_mutes() -> list:
     """
     Desmuta APENAS os dispositivos que este app mutou e ainda não desmutou.
-    Chamado ao fechar o app. Retorna quantos dispositivos foram restaurados.
-    Dispositivos cujo mute não foi dado pelo app permanecem intocados.
+    Chamado ao fechar o app. Retorna uma lista de {"id", "name"} dos
+    dispositivos restaurados (vazia se nenhum). Dispositivos cujo mute não
+    foi dado pelo app permanecem intocados.
     """
     with _ledger_lock:
         pending = list(_muted_by_app)
-    count = 0
+    restored = []
     for device_id in pending:
         if set_device_mute(device_id, False):
-            count += 1
-    if count:
-        print(f"[AudioManager] {count} dispositivo(s) desmutado(s) ao sair.")
-    return count
+            restored.append({"id": device_id, "name": get_device_name(device_id)})
+    if restored:
+        names = ", ".join(d["name"] for d in restored)
+        _log(f"{len(restored)} dispositivo(s) desmutado(s) ao sair "
+             f"(estavam mutados pelo app): {names}", "warn")
+    return restored
 
 
 def mute_device(device_id: str) -> bool:

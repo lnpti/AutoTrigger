@@ -13,11 +13,12 @@ import copy
 from datetime import datetime
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QPushButton, QScrollArea, QFrame, QStackedWidget, QButtonGroup,
-    QRadioButton, QCheckBox, QSizePolicy,
+    QRadioButton, QCheckBox, QSizePolicy, QListWidget, QListWidgetItem,
+    QAbstractItemView,
 )
 
 from timeparse import fmt_secs, WEEKDAY_LABELS, is_armed_today
@@ -170,11 +171,31 @@ class SequenceDetail(QWidget):
         steps_bar.addWidget(add)
         v.addLayout(steps_bar)
 
-        self._steps_host = QVBoxLayout()
-        self._steps_host.setSpacing(6)
-        steps_wrap = QWidget()
-        steps_wrap.setLayout(self._steps_host)
-        v.addWidget(steps_wrap)
+        self._steps_empty_lbl = QLabel("Nenhuma etapa. Clique em '＋ Adicionar etapa'.")
+        self._steps_empty_lbl.setObjectName("dim")
+        v.addWidget(self._steps_empty_lbl)
+
+        # QListWidget em vez de QVBoxLayout de QFrames: dá arrastar-e-soltar
+        # nativo do Qt para reordenar etapas. Sem scroll próprio -- a lista
+        # cresce para caber todo o conteúdo e quem rola é a página (outer
+        # QScrollArea), como antes.
+        self._steps_list = QListWidget()
+        self._steps_list.setObjectName("steps_list")
+        self._steps_list.setDragDropMode(QAbstractItemView.InternalMove)
+        self._steps_list.setSelectionMode(QAbstractItemView.NoSelection)
+        self._steps_list.setFocusPolicy(Qt.NoFocus)
+        self._steps_list.setFrameShape(QFrame.NoFrame)
+        self._steps_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._steps_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._steps_list.setSpacing(6)
+        self._steps_list.setStyleSheet(
+            "QListWidget#steps_list { background: transparent; border: none; }"
+            "QListWidget#steps_list::item { border: none; padding: 0px; }"
+        )
+        self._steps_list.model().rowsMoved.connect(
+            lambda *a: QTimer.singleShot(0, self._on_steps_reordered)
+        )
+        v.addWidget(self._steps_list)
         v.addStretch(1)
 
         # Página 1 — editor de etapa
@@ -224,22 +245,42 @@ class SequenceDetail(QWidget):
     # ── steps ────────────────────────────────────────────────────────────────────
 
     def _rebuild_steps(self):
-        while self._steps_host.count():
-            item = self._steps_host.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
+        self._steps_list.clear()
         self._step_rows = []
         steps = self._seq.get("steps", [])
-        if not steps:
-            empty = QLabel("Nenhuma etapa. Clique em '＋ Adicionar etapa'.")
-            empty.setObjectName("dim")
-            self._steps_host.addWidget(empty)
-            return
+        self._steps_empty_lbl.setVisible(not steps)
+        self._steps_list.setVisible(bool(steps))
         for i, step in enumerate(steps):
             row = self._make_step_row(i, step, len(steps))
-            self._steps_host.addWidget(row)
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, i)  # índice original -- ver _on_steps_reordered
+            item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
+            self._steps_list.addItem(item)
+            self._steps_list.setItemWidget(item, row)
+            item.setSizeHint(row.sizeHint())
             self._step_rows.append(row)
+        _resize_list_to_content(self._steps_list)
+
+    def _on_steps_reordered(self):
+        """Chamado depois de um drag-and-drop no QListWidget de etapas.
+
+        O Qt já moveu o item/widget visualmente; aqui só recalculamos a nova
+        ordem lógica (via o índice original guardado em cada item) e
+        persistimos -- depois reconstruímos do zero para os botões ↑/↓/✎/✕
+        de cada linha apontarem para o índice certo de novo.
+        """
+        steps = self._seq.get("steps", [])
+        new_order = []
+        for i in range(self._steps_list.count()):
+            orig_idx = self._steps_list.item(i).data(Qt.UserRole)
+            if orig_idx is None or not (0 <= orig_idx < len(steps)):
+                return  # estado inesperado -- não mexe em nada
+            new_order.append(steps[orig_idx])
+        if new_order == steps:
+            return
+        self._seq["steps"] = new_order
+        self._persist()
+        self._rebuild_steps()
 
     def _make_step_row(self, idx: int, step: dict, n: int) -> QFrame:
         f = QFrame()
@@ -519,6 +560,21 @@ class _ScheduleEditor(QFrame):
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────────
+
+def _resize_list_to_content(list_widget: QListWidget):
+    """
+    QListWidget não cresce sozinho para caber o conteúdo (tem viewport de
+    tamanho independente, com scroll próprio). Como aqui ele fica dentro de
+    uma página que já rola inteira (QScrollArea externa), calculamos a altura
+    exata do conteúdo e fixamos -- assim ele só ocupa o espaço necessário, sem
+    scrollbar própria nem espaço vazio sobrando.
+    """
+    total = sum(list_widget.sizeHintForRow(i) for i in range(list_widget.count()))
+    if list_widget.count() > 1:
+        total += list_widget.spacing() * (list_widget.count() - 1)
+    total += 2 * list_widget.frameWidth()
+    list_widget.setFixedHeight(max(total, 0))
+
 
 def _lbl(text: str) -> QLabel:
     lab = QLabel(text)

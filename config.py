@@ -293,6 +293,17 @@ class Config:
                 return
         seqs.append(seq)
 
+    def reorder_sequences(self, ordered_ids: list):
+        """Reordena as sequências para casar com `ordered_ids` (lista de ids).
+        Ids desconhecidos são ignorados; sequências fora da lista mantêm a
+        ordem relativa original, no final."""
+        seqs = self._data.get("sequences", [])
+        by_id = {s["id"]: s for s in seqs}
+        new_order = [by_id[sid] for sid in ordered_ids if sid in by_id]
+        seen = {s["id"] for s in new_order}
+        new_order += [s for s in seqs if s["id"] not in seen]
+        self._data["sequences"] = new_order
+
     def delete_sequence(self, seq_id: str):
         self._data["sequences"] = [
             s for s in self._data.get("sequences", []) if s["id"] != seq_id

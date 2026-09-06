@@ -1,20 +1,23 @@
-## AutoTrigger V10 — v2.3.8
+## AutoTrigger V10 — v2.3.9
 
-### Novidade
+### Novidades
 
-- **Ajuste de tempo ao vivo na etapa de Streaming.** Enquanto uma etapa de
-  streaming está rodando, aparecem botões **-5m / -1m / +1m / +5m** ao lado
-  do cronômetro para adicionar ou retirar tempo dessa execução — vale só para
-  a rodada atual (a duração configurada na etapa continua igual depois que a
-  sequência termina, nada é salvo). Retirar tempo além do que já passou
-  encerra o streaming em seguida.
-- O cronômetro da etapa de streaming agora também mostra o **horário previsto
-  de término** (ex.: "termina às 18:45"), atualizado automaticamente quando
-  o tempo é ajustado.
+- **Reordenar sequências e etapas arrastando.** Tanto a lista de sequências
+  (barra lateral) quanto a lista de etapas (dentro de uma sequência) agora
+  aceitam arrastar-e-soltar para reordenar. Os botões ↑/↓ das etapas
+  continuam funcionando também.
+- **Botão "A→Z"** na barra lateral: ordena todas as sequências por nome de
+  uma vez.
+- **Aviso ao desmutar dispositivo automaticamente ao sair.** Se o app fechar
+  enquanto um dispositivo que ele mesmo mutou (durante uma sequência) ainda
+  está mutado, ele desmuta por segurança — e agora avisa isso com uma
+  notificação na bandeja do Windows (não bloqueia o fechamento) e no log,
+  citando o nome do dispositivo.
 
-### Correções anteriores (v2.3.7)
+### Correções anteriores (v2.3.7 / v2.3.8)
 
+- Ajuste de tempo ao vivo na etapa de streaming (+1m/+5m/-1m/-5m) e horário
+  previsto de término.
 - O app impede o protetor de tela e a suspensão do Windows enquanto estiver
-  aberto — resolve hotkeys de janela alvo não chegando ao destino quando a
-  máquina entra em protetor de tela com área de trabalho segura.
+  aberto.
 - Republicado com Python 3.13 (compatibilidade mais ampla que 3.14).
