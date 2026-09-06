@@ -182,7 +182,13 @@ class SequenceDetail(QWidget):
         self._steps_list = QListWidget()
         self._steps_list.setObjectName("steps_list")
         self._steps_list.setDragDropMode(QAbstractItemView.InternalMove)
-        self._steps_list.setSelectionMode(QAbstractItemView.NoSelection)
+        # SingleSelection (não NoSelection!): o drag nativo do Qt usa
+        # selectedIndexes() internamente pra saber o que está sendo
+        # arrastado -- com NoSelection nada nunca conta como "selecionado" e
+        # o arrastar simplesmente não inicia. O retângulo de seleção padrão
+        # fica escondido via QSS abaixo (a linha já se realça sozinha via
+        # _paint_row conforme o estado de execução).
+        self._steps_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self._steps_list.setFocusPolicy(Qt.NoFocus)
         self._steps_list.setFrameShape(QFrame.NoFrame)
         self._steps_list.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -191,6 +197,7 @@ class SequenceDetail(QWidget):
         self._steps_list.setStyleSheet(
             "QListWidget#steps_list { background: transparent; border: none; }"
             "QListWidget#steps_list::item { border: none; padding: 0px; }"
+            "QListWidget#steps_list::item:selected { background: transparent; }"
         )
         self._steps_list.model().rowsMoved.connect(
             lambda *a: QTimer.singleShot(0, self._on_steps_reordered)
@@ -254,7 +261,6 @@ class SequenceDetail(QWidget):
             row = self._make_step_row(i, step, len(steps))
             item = QListWidgetItem()
             item.setData(Qt.UserRole, i)  # índice original -- ver _on_steps_reordered
-            item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
             self._steps_list.addItem(item)
             self._steps_list.setItemWidget(item, row)
             item.setSizeHint(row.sizeHint())

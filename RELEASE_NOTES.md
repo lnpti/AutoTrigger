@@ -1,23 +1,23 @@
-## AutoTrigger V10 — v2.3.9
+## AutoTrigger V10 — v2.3.10
 
-### Novidades
+### Correções
 
-- **Reordenar sequências e etapas arrastando.** Tanto a lista de sequências
-  (barra lateral) quanto a lista de etapas (dentro de uma sequência) agora
-  aceitam arrastar-e-soltar para reordenar. Os botões ↑/↓ das etapas
-  continuam funcionando também.
-- **Botão "A→Z"** na barra lateral: ordena todas as sequências por nome de
-  uma vez.
-- **Aviso ao desmutar dispositivo automaticamente ao sair.** Se o app fechar
-  enquanto um dispositivo que ele mesmo mutou (durante uma sequência) ainda
-  está mutado, ele desmuta por segurança — e agora avisa isso com uma
-  notificação na bandeja do Windows (não bloqueia o fechamento) e no log,
-  citando o nome do dispositivo.
+- **Arrastar-e-soltar para reordenar sequências/etapas não funcionava.**
+  A seleção nativa das listas estava desativada (para esconder o retângulo
+  padrão de seleção do Qt), mas o mecanismo de arrastar do Qt depende dela
+  internamente para saber o que está sendo arrastado. Corrigido mantendo a
+  seleção ativa (escondendo só o visual via CSS) e deixando o clique no card
+  da sequência propagar corretamente para a lista.
+- **Erro "Failed to load Python DLL" às vezes ao atualizar**, mesmo com o
+  app funcionando normal ao reabrir manualmente em seguida: era uma corrida
+  entre o antivírus fazendo varredura em tempo real do `.exe` recém-baixado/
+  substituído e o próprio instalador tentando reabrir o app rápido demais.
+  Adicionada uma pequena pausa antes do reinício automático após a
+  atualização, para dar tempo do arquivo "assentar".
 
-### Correções anteriores (v2.3.7 / v2.3.8)
+### Novidades anteriores (v2.3.9)
 
-- Ajuste de tempo ao vivo na etapa de streaming (+1m/+5m/-1m/-5m) e horário
-  previsto de término.
-- O app impede o protetor de tela e a suspensão do Windows enquanto estiver
-  aberto.
-- Republicado com Python 3.13 (compatibilidade mais ampla que 3.14).
+- Reordenar sequências e etapas (agora funcionando de verdade — ver acima).
+- Botão "A→Z" para ordenar sequências por nome.
+- Aviso na bandeja do Windows quando um dispositivo é desmutado
+  automaticamente ao fechar o app.

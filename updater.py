@@ -195,6 +195,12 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+REM Pequena pausa antes de reabrir: um antivirus fazendo scan em tempo real
+REM do .exe recem-substituido (novo, sem "reputacao") pode segurar o arquivo
+REM por um instante -- reabrir rapido demais pode falhar com "Failed to load
+REM Python DLL" mesmo com o arquivo correto no lugar. Dar esse respiro evita
+REM a corrida sem exigir nada do usuario (ele so precisaria abrir de novo).
+timeout /t 3 /nobreak >NUL
 {restart_cmd}
 del "%~f0"
 """

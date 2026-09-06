@@ -64,6 +64,11 @@ class SequenceCard(QFrame):
 
     def mousePressEvent(self, _e):
         self._on_click(self._sid)
+        # Deixa o evento seguir pro QListWidget pai: é ele quem inicia o
+        # arrastar-e-soltar (baseado no mousePressEvent do viewport). Se o
+        # card "engolir" o evento aqui, a lista nunca vê a pressão do botão
+        # e o drag nunca começa.
+        _e.ignore()
 
     def set_selected(self, v: bool):
         self._selected = v
@@ -244,13 +249,20 @@ class MainWindow(QMainWindow):
         self._seq_list = QListWidget()
         self._seq_list.setObjectName("seq_list")
         self._seq_list.setDragDropMode(QAbstractItemView.InternalMove)
-        self._seq_list.setSelectionMode(QAbstractItemView.NoSelection)
+        # SingleSelection (não NoSelection!): o drag nativo do Qt usa
+        # selectedIndexes() internamente pra saber o que está sendo
+        # arrastado -- com NoSelection nada nunca conta como "selecionado" e
+        # o arrastar simplesmente não inicia. O retângulo de seleção padrão
+        # fica escondido via QSS abaixo (o SequenceCard já pinta sua própria
+        # seleção com set_selected()).
+        self._seq_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self._seq_list.setFocusPolicy(Qt.NoFocus)
         self._seq_list.setFrameShape(QFrame.NoFrame)
         self._seq_list.setSpacing(6)
         self._seq_list.setStyleSheet(
             "QListWidget#seq_list { background: transparent; border: none; }"
             "QListWidget#seq_list::item { border: none; padding: 0px; }"
+            "QListWidget#seq_list::item:selected { background: transparent; }"
         )
         self._seq_list.model().rowsMoved.connect(
             lambda *a: QTimer.singleShot(0, self._on_sequences_reordered)
@@ -331,7 +343,6 @@ class MainWindow(QMainWindow):
         card = SequenceCard(seq, self._select_seq)
         item = QListWidgetItem()
         item.setData(Qt.UserRole, seq["id"])
-        item.setFlags(item.flags() & ~Qt.ItemIsSelectable)
         self._seq_list.addItem(item)
         self._seq_list.setItemWidget(item, card)
         item.setSizeHint(card.sizeHint())
