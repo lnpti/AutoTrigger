@@ -1,36 +1,28 @@
-## AutoTrigger V10 — v2.3.6
+## AutoTrigger V10 — v2.3.7
+
+### Correção
+
+- **Compilado com Python 3.13** (não 3.14): a v2.3.6 publicada antes foi
+  compilada com Python 3.14, que exige uma versão do runtime C (UCRT) do
+  Windows que máquinas sem atualizações recentes não têm — o app nem abria
+  ("Failed to load Python DLL ... LoadLibrary: não foi possível encontrar o
+  módulo especificado"). Corrigido republicando com Python 3.13, mais testado
+  e compatível. Os scripts de build (`build.bat`/`build_installer.bat`)
+  agora fixam a versão do Python usada, para não repetir esse problema.
 
 ### Novidade
 
-- **Alertas por Telegram**, nova seção em Configurações Globais (ao lado dos
-  alertas por e-mail): token do bot + chat ID, os mesmos eventos disparadores
-  (início/fim/erro/queda de stream) e botão de teste. Basta falar com
-  `@BotFather` no Telegram para criar um bot e pegar o token, e com
-  `@userinfobot` para descobrir o chat ID.
+- **O app agora impede o protetor de tela e a suspensão do Windows enquanto
+  estiver aberto** (sempre ativo, sem precisar configurar nada). Isso resolve
+  de raiz o problema de hotkeys de janela alvo não chegarem ao destino: em
+  algumas máquinas, quando o protetor de tela ativa, o Windows troca para uma
+  área de trabalho segura (a mesma da tela de bloqueio) — e nenhuma automação
+  de mouse/teclado consegue atravessar isso sem a senha real do usuário.
+  Evitando que o protetor ative, esse cenário nunca mais acontece.
 
-### Correções
+### Correções anteriores (v2.3.6)
 
-- **Abrir o app de novo enquanto já está rodando abria uma segunda instância**
-  (em vez de só mostrar a janela já aberta na bandeja). Agora, se já houver
-  uma instância rodando, a nova apenas avisa a existente para se mostrar
-  (`showNormal` + foco) e se encerra sozinha.
-- **Diálogo de "Atualização Disponível" podia travar em branco ("Não está
-  respondendo")** ao ser aberto pela checagem manual: o resultado da checagem
-  de atualização (que roda em thread de background) abria o diálogo direto
-  dessa thread, o que é inválido no Qt — corrigido levando o resultado até a
-  GUI thread via signal antes de abrir a janela.
-- Corrigido o mesmo tipo de problema no botão **"Enviar e-mail de teste"**
-  (usava o log da UI direto de uma thread de background).
-- Botão "Enviar e-mail de teste" quase invisível (estilo fraco demais) —
-  agora com contraste normal.
-- Correção de ortografia: "email" → "e-mail" em toda a interface.
-
-### Correções anteriores (v2.3.4 / v2.3.5)
-
-- App podia fechar sozinho ao clicar em "Baixar e Instalar" (mesma causa-raiz
-  de thread-safety do Qt, na barra de progresso do download).
-- Hotkey de janela alvo podia falhar em silêncio após o protetor de tela
-  (`AttachThreadInput` + confirmação de foco).
-- Campos desconfigurados em telas com escala 125% (DPI `PassThrough` +
-  rolagem em Configurações Globais).
-- Novo ícone e marca "AutoTrigger" na barra superior.
+- Alertas por Telegram (nova seção em Configurações Globais).
+- Instância única: abrir o app já rodando só mostra a janela existente.
+- Diálogo de atualização podia travar em branco; botão de e-mail de teste
+  quase invisível; ortografia "email" → "e-mail".

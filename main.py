@@ -42,6 +42,37 @@ except OSError:
 import applog
 applog.init()
 
+import ctypes
+
+_ES_CONTINUOUS = 0x80000000
+_ES_SYSTEM_REQUIRED = 0x00000001
+_ES_DISPLAY_REQUIRED = 0x00000002
+
+
+def _suppress_screensaver_and_sleep():
+    """
+    Impede o protetor de tela e a suspensão do Windows enquanto o app estiver
+    aberto (SetThreadExecutionState). Isso é mais confiável do que tentar
+    fechar o protetor DEPOIS que ele já ativou: em algumas máquinas (política
+    de inatividade/domínio) o protetor troca para uma área de trabalho segura
+    assim que ativa, e nenhuma automação de mouse/teclado consegue atravessar
+    isso sem a senha real do usuário -- melhor nunca deixar ativar.
+    """
+    try:
+        ctypes.windll.kernel32.SetThreadExecutionState(
+            _ES_CONTINUOUS | _ES_SYSTEM_REQUIRED | _ES_DISPLAY_REQUIRED
+        )
+    except Exception as exc:
+        applog.log(f"Não foi possível suprimir o protetor de tela: {exc}", "warn")
+
+
+def _restore_screensaver_and_sleep():
+    """Devolve o comportamento normal de energia/protetor de tela ao fechar."""
+    try:
+        ctypes.windll.kernel32.SetThreadExecutionState(_ES_CONTINUOUS)
+    except Exception:
+        pass
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon, QAction, QGuiApplication
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
@@ -145,6 +176,8 @@ def main():
         # ser avisada pra se mostrar. Não abre uma segunda janela/instância.
         return
 
+    _suppress_screensaver_and_sleep()
+
     apply_theme(app)
     ico = _asset_icon()
     if ico:
@@ -180,6 +213,7 @@ def main():
             single_instance_server.close()
         except Exception:
             pass
+        _restore_screensaver_and_sleep()
         try:
             file_monitor.stop()
             engine.cancel_all()
