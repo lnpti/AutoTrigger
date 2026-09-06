@@ -1,28 +1,20 @@
-## AutoTrigger V10 — v2.3.7
-
-### Correção
-
-- **Compilado com Python 3.13** (não 3.14): a v2.3.6 publicada antes foi
-  compilada com Python 3.14, que exige uma versão do runtime C (UCRT) do
-  Windows que máquinas sem atualizações recentes não têm — o app nem abria
-  ("Failed to load Python DLL ... LoadLibrary: não foi possível encontrar o
-  módulo especificado"). Corrigido republicando com Python 3.13, mais testado
-  e compatível. Os scripts de build (`build.bat`/`build_installer.bat`)
-  agora fixam a versão do Python usada, para não repetir esse problema.
+## AutoTrigger V10 — v2.3.8
 
 ### Novidade
 
-- **O app agora impede o protetor de tela e a suspensão do Windows enquanto
-  estiver aberto** (sempre ativo, sem precisar configurar nada). Isso resolve
-  de raiz o problema de hotkeys de janela alvo não chegarem ao destino: em
-  algumas máquinas, quando o protetor de tela ativa, o Windows troca para uma
-  área de trabalho segura (a mesma da tela de bloqueio) — e nenhuma automação
-  de mouse/teclado consegue atravessar isso sem a senha real do usuário.
-  Evitando que o protetor ative, esse cenário nunca mais acontece.
+- **Ajuste de tempo ao vivo na etapa de Streaming.** Enquanto uma etapa de
+  streaming está rodando, aparecem botões **-5m / -1m / +1m / +5m** ao lado
+  do cronômetro para adicionar ou retirar tempo dessa execução — vale só para
+  a rodada atual (a duração configurada na etapa continua igual depois que a
+  sequência termina, nada é salvo). Retirar tempo além do que já passou
+  encerra o streaming em seguida.
+- O cronômetro da etapa de streaming agora também mostra o **horário previsto
+  de término** (ex.: "termina às 18:45"), atualizado automaticamente quando
+  o tempo é ajustado.
 
-### Correções anteriores (v2.3.6)
+### Correções anteriores (v2.3.7)
 
-- Alertas por Telegram (nova seção em Configurações Globais).
-- Instância única: abrir o app já rodando só mostra a janela existente.
-- Diálogo de atualização podia travar em branco; botão de e-mail de teste
-  quase invisível; ortografia "email" → "e-mail".
+- O app impede o protetor de tela e a suspensão do Windows enquanto estiver
+  aberto — resolve hotkeys de janela alvo não chegando ao destino quando a
+  máquina entra em protetor de tela com área de trabalho segura.
+- Republicado com Python 3.13 (compatibilidade mais ampla que 3.14).

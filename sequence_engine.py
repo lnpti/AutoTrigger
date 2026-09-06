@@ -53,6 +53,21 @@ class SequenceEngine:
     def is_vlc_available(self) -> bool:
         return self._player.is_vlc_available()
 
+    # ── ajuste de tempo do streaming em execução ─────────────────────────────────
+    # Vale só para a execução atual da etapa (a duração salva na sequência não
+    # muda) -- pedido do usuário: "tempo extra"/"retirar tempo" ao vivo.
+
+    def is_streaming(self) -> bool:
+        return self._player.is_streaming()
+
+    def adjust_stream_time(self, delta_seconds: float) -> Optional[float]:
+        """Soma/subtrai tempo ao stream em execução. None se não há stream ativo."""
+        return self._player.adjust_stream_time(delta_seconds)
+
+    def get_stream_end_time(self) -> Optional[float]:
+        """Timestamp Unix previsto de término do stream atual, ou None."""
+        return self._player.get_stream_end_time()
+
     # ── monitor control ───────────────────────────────────────────────────────
 
     def start_monitor(self) -> bool:

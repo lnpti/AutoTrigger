@@ -145,7 +145,10 @@ class StepRunner:
             time.sleep(1.0)
             elapsed += 1.0
             if on_tick:
-                on_tick(elapsed, float(duration))
+                # Duração AO VIVO (não a capturada no início): reflete ajustes
+                # de "tempo extra"/"retirar tempo" feitos durante a execução
+                # (AudioPlayer.adjust_stream_time), sem alterar a etapa salva.
+                on_tick(elapsed, self._player.get_stream_duration())
         if stop_event.is_set():
             self._player.stop()
             return False

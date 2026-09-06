@@ -5,6 +5,7 @@ Requer VLC instalado no sistema.
 """
 import threading
 import time
+from typing import Optional
 
 try:
     import vlc
@@ -26,6 +27,10 @@ class AudioPlayer:
         self._on_finished = None
         self._on_stream_event = None  # cb(kind, detail) p/ watchdog (dropped/reconnecting/recovered)
         self._generation = 0          # evita callbacks de threads antigas
+        self._stream_duration = 0.0   # duração AO VIVO do stream atual (ver adjust_stream_time)
+        self._stream_started_at = 0.0
+        self._is_streaming = False
+        self._stream_lock = threading.Lock()
         self._output_device_id = ""   # ID MMDevice Windows do dispositivo de saída
         self._log = lambda msg, level="info": print(f"[Player][{level}] {msg}")
 
@@ -93,6 +98,11 @@ class AudioPlayer:
 
         if not self._start_media(source, is_playlist):
             return False
+
+        with self._stream_lock:
+            self._stream_duration = float(duration_seconds)
+            self._is_streaming = duration_seconds > 0
+            self._stream_started_at = time.time()
 
         self._stop_monitor.clear()
         self._monitor_thread = threading.Thread(
@@ -187,6 +197,9 @@ class AudioPlayer:
                     break
                 time.sleep(0.2)
 
+        if self._generation == generation:
+            self._is_streaming = False
+
         # Só chama on_finished se não houve stop() manual e geração é válida
         if not self._stop_monitor.is_set() and self._generation == generation:
             self.stop()
@@ -227,7 +240,7 @@ class AudioPlayer:
         reconnect_attempt = 0
         backoff = 1.0
 
-        while elapsed < duration_seconds and not self._stop_monitor.is_set():
+        while elapsed < self._stream_duration and not self._stop_monitor.is_set():
             time.sleep(0.5)
             elapsed += 0.5
             if self._generation != generation:
@@ -239,10 +252,10 @@ class AudioPlayer:
                 st = None
 
             # Watchdog: stream caiu antes da hora → reconecta (simula o "play").
-            if st in DEAD and elapsed < duration_seconds and not self._stop_monitor.is_set():
+            if st in DEAD and elapsed < self._stream_duration and not self._stop_monitor.is_set():
                 reconnect_attempt += 1
                 st_name = st.name if hasattr(st, "name") else str(st)
-                remaining = int(duration_seconds - elapsed)
+                remaining = int(self._stream_duration - elapsed)
                 m, s = divmod(remaining, 60)
                 self._log(
                     f"⚠ Stream caiu (VLC: {st_name}) — reconectando "
@@ -269,7 +282,7 @@ class AudioPlayer:
 
             if elapsed - last_log_at >= 10.0:
                 last_log_at = elapsed
-                remaining = int(duration_seconds - elapsed)
+                remaining = int(self._stream_duration - elapsed)
                 m, s = divmod(remaining, 60)
                 st_name = st.name if hasattr(st, "name") else str(st)
                 self._log(f"Streaming... restam {m:02d}:{s:02d} | VLC: {st_name}", "info")
@@ -277,6 +290,7 @@ class AudioPlayer:
     def stop(self):
         """Para a reprodução imediatamente."""
         self._stop_monitor.set()
+        self._is_streaming = False
         if self._list_player is not None:
             try:
                 self._list_player.stop()
@@ -291,6 +305,39 @@ class AudioPlayer:
             except Exception:
                 pass
             self._player = None
+
+    def is_streaming(self) -> bool:
+        """True enquanto uma etapa de streaming (duration_seconds > 0) está ativa."""
+        return self._is_streaming
+
+    def adjust_stream_time(self, delta_seconds: float) -> Optional[float]:
+        """
+        Soma (ou subtrai, se negativo) tempo à duração do stream ATUALMENTE em
+        execução. Vale só para essa execução -- não altera a configuração
+        salva da etapa (duration_seconds no config.json continua igual).
+
+        Reduzir para menos que o tempo já decorrido encerra o stream no
+        próximo ciclo do monitor (~0.5s), como um "encerrar antes".
+
+        Retorna a nova duração total em segundos, ou None se não há stream
+        em execução no momento.
+        """
+        with self._stream_lock:
+            if not self._is_streaming:
+                return None
+            self._stream_duration = max(0.0, self._stream_duration + delta_seconds)
+            return self._stream_duration
+
+    def get_stream_duration(self) -> float:
+        """Duração total AO VIVO do stream atual (pode já ter sido ajustada)."""
+        return self._stream_duration
+
+    def get_stream_end_time(self) -> Optional[float]:
+        """Timestamp Unix (time.time()) previsto de término do stream atual,
+        ou None se não há stream em execução."""
+        if not self._is_streaming:
+            return None
+        return self._stream_started_at + self._stream_duration
 
     def is_playing(self) -> bool:
         if self._player is None:

@@ -102,6 +102,25 @@ class SequenceDetail(QWidget):
         actions.addWidget(self._cancel_btn)
         actions.addSpacing(10)
         actions.addWidget(self._timer)
+
+        # Ajuste de tempo do streaming EM EXECUÇÃO -- só aparece durante uma
+        # etapa de streaming ativa. Vale só para essa execução (não altera a
+        # duração salva na etapa).
+        self._stream_time_box = QWidget()
+        st_lay = QHBoxLayout(self._stream_time_box)
+        st_lay.setContentsMargins(0, 0, 0, 0)
+        st_lay.setSpacing(4)
+        for delta, txt, tip in (
+            (-300, "-5m", "Retirar 5 min do streaming atual"),
+            (-60,  "-1m", "Retirar 1 min do streaming atual"),
+            (60,   "+1m", "Adicionar 1 min ao streaming atual"),
+            (300,  "+5m", "Adicionar 5 min ao streaming atual"),
+        ):
+            b = QPushButton(txt); b.setObjectName("ghost"); b.setToolTip(tip)
+            b.clicked.connect(lambda _=0, d=delta: self._adjust_stream_time(d))
+            st_lay.addWidget(b)
+        self._stream_time_box.hide()
+        actions.addWidget(self._stream_time_box)
         actions.addStretch(1)
         self._dup_btn = QPushButton("⧉  Duplicar")
         self._dup_btn.setObjectName("ghost")
@@ -343,7 +362,16 @@ class SequenceDetail(QWidget):
         e_m, e_s = divmod(int(elapsed), 60)
         t_m, t_s = divmod(int(total), 60)
         prefix = "⏳ Atraso" if step_idx == -1 else "⏱"
-        self._timer.setText(f"{prefix}  {e_m:02d}:{e_s:02d} / {t_m:02d}:{t_s:02d}")
+        txt = f"{prefix}  {e_m:02d}:{e_s:02d} / {t_m:02d}:{t_s:02d}"
+        steps = self._seq.get("steps", [])
+        is_stream_step = 0 <= step_idx < len(steps) and steps[step_idx].get("type") == "stream"
+        end_ts = self._engine.get_stream_end_time() if is_stream_step else None
+        if end_ts is not None:
+            txt += f"  ·  termina às {datetime.fromtimestamp(end_ts).strftime('%H:%M')}"
+        self._timer.setText(txt)
+
+    def _adjust_stream_time(self, delta_seconds: int):
+        self._engine.adjust_stream_time(delta_seconds)
 
     def _set_status(self, state: str, step_idx: int):
         txt, col = _STATE_TEXTS.get(state, ("", COLORS["text_dim"]))
@@ -353,6 +381,9 @@ class SequenceDetail(QWidget):
         self._cancel_btn.setVisible(running)
         self._run_btn.setVisible(not running)
         self._rehearse_btn.setVisible(not running)
+        steps = self._seq.get("steps", [])
+        is_stream_step = 0 <= step_idx < len(steps) and steps[step_idx].get("type") == "stream"
+        self._stream_time_box.setVisible(running and is_stream_step)
         if not running:
             self._timer.setText("")
         # realça as linhas
