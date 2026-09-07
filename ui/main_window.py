@@ -19,14 +19,13 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QStackedWidget, QScrollArea, QSplitter, QListWidget,
-    QListWidgetItem, QAbstractItemView,
+    QFrame, QStackedWidget, QScrollArea, QSplitter,
 )
 
 from version import __version__
 from timeparse import fmt_secs
 from ui.theme import COLORS, STATE_COLORS
-from ui.widgets import LogView, StatusDot, hline
+from ui.widgets import LogView, StatusDot, hline, drag_handle, DragList
 from ui.sequence_detail import SequenceDetail
 from ui.global_settings import GlobalSettings
 
@@ -40,15 +39,18 @@ def _asset_icon() -> Optional[QIcon]:
 
 class SequenceCard(QFrame):
     """Card de sequência na sidebar."""
-    def __init__(self, seq: dict, on_click):
+    def __init__(self, seq: dict, on_click, drag_list: DragList):
         super().__init__()
         self.setObjectName("raised")
         self._sid = seq["id"]
         self._on_click = on_click
+        self._drag_list = drag_list
         self.setCursor(Qt.PointingHandCursor)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(10, 8, 10, 8)
         lay.setSpacing(8)
+        self._handle = drag_handle()
+        lay.addWidget(self._handle)
         self._dot = StatusDot("idle")
         lay.addWidget(self._dot)
         col = QVBoxLayout(); col.setSpacing(0)
@@ -62,13 +64,16 @@ class SequenceCard(QFrame):
         self._armed = True
         self._repaint()
 
-    def mousePressEvent(self, _e):
+    def mousePressEvent(self, e):
+        if self._handle.geometry().contains(e.pos()):
+            # Clique na alça "≡": não abre a sequência, só inicia o
+            # arrastar (DragList.begin_drag).
+            self._drag_list.begin_drag(self, e.globalPosition().toPoint())
+            e.accept()
+            return
+        # Clique fora da alça: só abre a sequência.
         self._on_click(self._sid)
-        # Deixa o evento seguir pro QListWidget pai: é ele quem inicia o
-        # arrastar-e-soltar (baseado no mousePressEvent do viewport). Se o
-        # card "engolir" o evento aqui, a lista nunca vê a pressão do botão
-        # e o drag nunca começa.
-        _e.ignore()
+        e.accept()
 
     def set_selected(self, v: bool):
         self._selected = v
@@ -89,11 +94,14 @@ class SequenceCard(QFrame):
         self._kw.setText(f"⌁ {seq.get('keyword_trigger','')}")
 
     def _repaint(self):
-        bg = COLORS["bg3"] if self._selected else COLORS["bg2"]
-        border = COLORS["cyan"] if self._selected else COLORS["border"]
+        if self._selected:
+            bg, border = COLORS["bg3"], COLORS["cyan"]
+        else:
+            bg, border = COLORS["bg2"], COLORS["border"]
         self.setStyleSheet(
             f"QFrame#raised {{ background:{bg}; border:1px solid {border};"
-            f" border-radius:10px; }}")
+            f" border-radius:10px; }}"
+            f"QFrame#raised:hover {{ border:1px solid {COLORS['cyan']}; }}")
 
 
 class MainWindow(QMainWindow):
@@ -244,30 +252,22 @@ class MainWindow(QMainWindow):
         title_bar.addWidget(sort_btn)
         lay.addLayout(title_bar)
 
-        # QListWidget com arrastar-e-soltar nativo do Qt para reordenar as
-        # sequências (cada item embute um SequenceCard via setItemWidget).
-        self._seq_list = QListWidget()
+        # Lista de cards de sequência, com arrastar-e-soltar manual (ver
+        # DragList em ui/widgets.py). Fica dentro de um QScrollArea porque
+        # (ao contrário do antigo QListWidget) um QWidget comum não rola
+        # sozinho quando o conteúdo passa da altura disponível.
+        self._seq_list = DragList()
         self._seq_list.setObjectName("seq_list")
-        self._seq_list.setDragDropMode(QAbstractItemView.InternalMove)
-        # SingleSelection (não NoSelection!): o drag nativo do Qt usa
-        # selectedIndexes() internamente pra saber o que está sendo
-        # arrastado -- com NoSelection nada nunca conta como "selecionado" e
-        # o arrastar simplesmente não inicia. O retângulo de seleção padrão
-        # fica escondido via QSS abaixo (o SequenceCard já pinta sua própria
-        # seleção com set_selected()).
-        self._seq_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        self._seq_list.setFocusPolicy(Qt.NoFocus)
-        self._seq_list.setFrameShape(QFrame.NoFrame)
-        self._seq_list.setSpacing(6)
-        self._seq_list.setStyleSheet(
-            "QListWidget#seq_list { background: transparent; border: none; }"
-            "QListWidget#seq_list::item { border: none; padding: 0px; }"
-            "QListWidget#seq_list::item:selected { background: transparent; }"
+        self._seq_list.set_spacing(6)
+        self._seq_list.reordered.connect(
+            lambda: QTimer.singleShot(0, self._on_sequences_reordered)
         )
-        self._seq_list.model().rowsMoved.connect(
-            lambda *a: QTimer.singleShot(0, self._on_sequences_reordered)
-        )
-        lay.addWidget(self._seq_list, 1)
+        seq_scroll = QScrollArea()
+        seq_scroll.setWidgetResizable(True)
+        seq_scroll.setFrameShape(QFrame.NoFrame)
+        seq_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        seq_scroll.setWidget(self._seq_list)
+        lay.addWidget(seq_scroll, 1)
 
         new_btn = QPushButton("＋  Nova Sequência")
         new_btn.setObjectName("primary")
@@ -331,7 +331,7 @@ class MainWindow(QMainWindow):
 
     def _rebuild_seq_list(self):
         """Recria os cards na ordem atual do config (após sort ou reload)."""
-        self._seq_list.clear()  # também deleta os SequenceCard (setItemWidget)
+        self._seq_list.clear_items()  # também deleta os SequenceCard
         self._cards.clear()
         for seq in self._config.get_sequences():
             self._add_card(seq)
@@ -340,22 +340,14 @@ class MainWindow(QMainWindow):
             self._cards[self._selected_id].set_selected(True)
 
     def _add_card(self, seq: dict):
-        card = SequenceCard(seq, self._select_seq)
-        item = QListWidgetItem()
-        item.setData(Qt.UserRole, seq["id"])
-        self._seq_list.addItem(item)
-        self._seq_list.setItemWidget(item, card)
-        item.setSizeHint(card.sizeHint())
+        card = SequenceCard(seq, self._select_seq, self._seq_list)
+        self._seq_list.add_item(seq["id"], card)
         self._cards[seq["id"]] = card
 
     def _on_sequences_reordered(self):
-        """Drag-and-drop no QListWidget de sequências: o Qt já moveu os
+        """Arrastar-e-soltar na lista de sequências: o DragList já moveu os
         cards visualmente -- só precisamos gravar a nova ordem no config."""
-        ordered_ids = [
-            self._seq_list.item(i).data(Qt.UserRole)
-            for i in range(self._seq_list.count())
-        ]
-        ordered_ids = [sid for sid in ordered_ids if sid]
+        ordered_ids = [sid for sid in self._seq_list.ordered_keys() if sid]
         if ordered_ids:
             self._config.reorder_sequences(ordered_ids)
             self._config.save()
@@ -418,10 +410,7 @@ class MainWindow(QMainWindow):
         self._config.save()
         self._engine.reload_sequences()
         if seq_id in self._cards:
-            for i in range(self._seq_list.count()):
-                if self._seq_list.item(i).data(Qt.UserRole) == seq_id:
-                    self._seq_list.takeItem(i)
-                    break
+            self._seq_list.remove_item(seq_id)
             card = self._cards.pop(seq_id, None)
             if card:
                 card.deleteLater()
