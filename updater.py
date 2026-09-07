@@ -181,26 +181,41 @@ class Updater:
         # privilégio; senão, start direto.
         restart_cmd = (f'start "" explorer.exe "{exe_path}"' if needs_elevation
                        else f'start "" "{exe_path}"')
+        exe_name = os.path.basename(exe_path)
 
         bat_content = f"""@echo off
+REM "timeout" precisa de um console interativo de verdade -- falha
+REM silenciosamente ("input redirection not supported") quando rodado sem
+REM janela/stdin real, que e exatamente como este .bat roda (subprocess
+REM com CREATE_NO_WINDOW). "ping" e o jeito classico de "dormir" em batch
+REM que funciona em qualquer contexto, com ou sem console.
 :wait
 tasklist /FI "PID eq {pid}" 2>NUL | find /I "{pid}" >NUL
 if not errorlevel 1 (
-    timeout /t 1 /nobreak >NUL
+    ping -n 2 127.0.0.1 >NUL
     goto wait
 )
 move /Y "{new_exe}" "{exe_path}"
 if errorlevel 1 (
-    echo ERRO: nao foi possivel substituir o executavel.
-    pause
     exit /b 1
 )
-REM Pequena pausa antes de reabrir: um antivirus fazendo scan em tempo real
-REM do .exe recem-substituido (novo, sem "reputacao") pode segurar o arquivo
-REM por um instante -- reabrir rapido demais pode falhar com "Failed to load
-REM Python DLL" mesmo com o arquivo correto no lugar. Dar esse respiro evita
-REM a corrida sem exigir nada do usuario (ele so precisaria abrir de novo).
-timeout /t 3 /nobreak >NUL
+REM Espera o .exe recem-substituido ficar livre antes de reabrir. Um
+REM antivirus fazendo scan em tempo real de um binario novo/sem "reputacao"
+REM pode segurar o arquivo por alguns segundos -- reabrir enquanto ainda
+REM esta preso falha com "Failed to load Python DLL" mesmo com o arquivo
+REM certo no lugar. "ren" para o proprio nome falha silenciosamente se o
+REM arquivo estiver em uso/travado, e funciona assim que for liberado --
+REM mais confiavel que uma pausa fixa (que pode nao ser longa o bastante).
+set WAITED=0
+:wait_unlocked
+ren "{exe_path}" "{exe_name}" >NUL 2>&1
+if errorlevel 1 (
+    if %WAITED% LSS 25 (
+        ping -n 2 127.0.0.1 >NUL
+        set /a WAITED+=1
+        goto wait_unlocked
+    )
+)
 {restart_cmd}
 del "%~f0"
 """

@@ -1,23 +1,27 @@
-## AutoTrigger V10 — v2.3.10
+## AutoTrigger V10 — v2.3.11
 
-### Correções
+### Correção (de verdade, desta vez)
 
-- **Arrastar-e-soltar para reordenar sequências/etapas não funcionava.**
-  A seleção nativa das listas estava desativada (para esconder o retângulo
-  padrão de seleção do Qt), mas o mecanismo de arrastar do Qt depende dela
-  internamente para saber o que está sendo arrastado. Corrigido mantendo a
-  seleção ativa (escondendo só o visual via CSS) e deixando o clique no card
-  da sequência propagar corretamente para a lista.
-- **Erro "Failed to load Python DLL" às vezes ao atualizar**, mesmo com o
-  app funcionando normal ao reabrir manualmente em seguida: era uma corrida
-  entre o antivírus fazendo varredura em tempo real do `.exe` recém-baixado/
-  substituído e o próprio instalador tentando reabrir o app rápido demais.
-  Adicionada uma pequena pausa antes do reinício automático após a
-  atualização, para dar tempo do arquivo "assentar".
+- **"Failed to load Python DLL" ao reabrir sozinho após atualização.**
+  A correção anterior (pausa de 3s) não fazia efeito nenhum: descobri, testando
+  isoladamente, que o comando `timeout` do Windows **falha silenciosamente**
+  quando roda sem um console interativo de verdade — que é exatamente como
+  o script de atualização roda. Ou seja, a pausa nunca acontecia.
+  Trocado por uma checagem de verdade: o script tenta renomear o `.exe`
+  recém-substituído para o próprio nome, em loop — isso falha enquanto o
+  antivírus estiver com o arquivo aberto para escanear, e funciona assim que
+  for liberado. Testado isoladamente com um arquivo travado de propósito por
+  3 segundos: o script esperou exatamente esse tempo e seguiu corretamente
+  assim que destravou.
 
-### Novidades anteriores (v2.3.9)
+  **Observação:** como a correção está no próprio mecanismo de atualização,
+  ela só entra em vigor a partir da *próxima* atualização depois desta — ou
+  seja, é possível que a atualização desta versão específica (para quem
+  estiver rodando a v2.3.10 ou anterior) ainda mostre o erro passageiro uma
+  última vez, mas todas as atualizações futuras a partir daqui devem vir
+  limpas.
 
-- Reordenar sequências e etapas (agora funcionando de verdade — ver acima).
+### Correções anteriores (v2.3.10)
+
+- Arrastar-e-soltar para reordenar sequências/etapas (corrigido).
 - Botão "A→Z" para ordenar sequências por nome.
-- Aviso na bandeja do Windows quando um dispositivo é desmutado
-  automaticamente ao fechar o app.
