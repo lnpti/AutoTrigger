@@ -1,3 +1,23 @@
+## AutoTrigger V10 — v2.3.13
+
+### Alertas por Telegram para vários contatos
+
+- Em Configurações Globais, o campo único de "Chat ID" virou uma **lista de
+  contatos**: cada um com **nome** (ex.: "João — plantão"), chat_id, opção de
+  pausar, botão de teste individual (📨) e remover (✕).
+- O log identifica **quem recebeu ou falhou** ("Telegram enviado para João",
+  "Falha ao enviar para Maria: …"). Se um contato falha, os outros continuam
+  recebendo.
+- Quem já tinha um chat_id configurado é migrado automaticamente para
+  "Contato 1", sem perder nada.
+
+### Ganho de volume no streaming
+
+- A etapa de Streaming ganhou o campo **Ganho de volume (0–200%)**: 100% é o
+  normal, acima disso amplifica. Aparece no resumo da etapa e no log.
+- Vale só para o stream daquela etapa (áudios comuns seguem em 100%) e é
+  reaplicado se o stream cair e reconectar. Etapas antigas assumem 100%.
+
 ## AutoTrigger V10 — v2.3.12
 
 ### Arrastar-e-soltar refeito

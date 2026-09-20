@@ -11,6 +11,7 @@ Schema v2:
 
 Migração automática de v1 (keys planas) → v2 na primeira carga.
 """
+import copy
 import json
 import os
 import sys
@@ -87,7 +88,8 @@ DEFAULT_EMAIL = {
 DEFAULT_TELEGRAM = {
     "enabled": False,
     "bot_token": "",
-    "chat_id": "",
+    # Vários contatos com o mesmo bot: [{"name": str, "chat_id": str, "enabled": bool}]
+    "contacts": [],
     "events": {
         "start": True,
         "done": True,
@@ -102,8 +104,8 @@ DEFAULT_GLOBAL = {
     "default_input_device_name": "",
     "default_output_device_id": "",
     "default_output_device_name": "",
-    "email": dict(DEFAULT_EMAIL),
-    "telegram": dict(DEFAULT_TELEGRAM),
+    "email": copy.deepcopy(DEFAULT_EMAIL),
+    "telegram": copy.deepcopy(DEFAULT_TELEGRAM),
 }
 
 
@@ -165,7 +167,7 @@ class Config:
     def __init__(self):
         self._data: dict = {
             "version": 2,
-            "global": dict(DEFAULT_GLOBAL),
+            "global": copy.deepcopy(DEFAULT_GLOBAL),
             "sequences": [],
         }
         self.load()
@@ -198,7 +200,15 @@ class Config:
         g = self._data.setdefault("global", {})
         for key, default in DEFAULT_GLOBAL.items():
             if key not in g:
-                g[key] = dict(default) if isinstance(default, dict) else default
+                g[key] = copy.deepcopy(default)
+        # Migra o Telegram antigo (um único chat_id) para a lista de contatos.
+        tg_old = g.get("telegram")
+        if isinstance(tg_old, dict) and "chat_id" in tg_old:
+            legacy = str(tg_old.pop("chat_id", "") or "").strip()
+            if legacy and not tg_old.get("contacts"):
+                tg_old["contacts"] = [
+                    {"name": "Contato 1", "chat_id": legacy, "enabled": True}
+                ]
         # Garante subchaves do email (ex.: 'events') em configs parciais.
         email = g.setdefault("email", dict(DEFAULT_EMAIL))
         for key, default in DEFAULT_EMAIL.items():
@@ -211,7 +221,7 @@ class Config:
         telegram = g.setdefault("telegram", dict(DEFAULT_TELEGRAM))
         for key, default in DEFAULT_TELEGRAM.items():
             if key not in telegram:
-                telegram[key] = dict(default) if isinstance(default, dict) else default
+                telegram[key] = copy.deepcopy(default)
         tg_events = telegram.setdefault("events", dict(DEFAULT_TELEGRAM["events"]))
         for key, default in DEFAULT_TELEGRAM["events"].items():
             tg_events.setdefault(key, default)

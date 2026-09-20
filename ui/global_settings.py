@@ -133,11 +133,19 @@ class GlobalSettings(QWidget):
         self._tg_token = QLineEdit()
         self._tg_token.setEchoMode(QLineEdit.Password)
         self._tg_token.setPlaceholderText("token do bot (fala com @BotFather)")
-        self._tg_chat = QLineEdit()
-        self._tg_chat.setPlaceholderText("chat_id (fala com @userinfobot)")
-
         root.addWidget(LabeledRow("Bot Token", self._tg_token, label_w=120))
-        root.addWidget(LabeledRow("Chat ID", self._tg_chat, label_w=120))
+
+        root.addWidget(_lbl_section(
+            "Contatos que recebem os alertas (cada um com o próprio chat_id — "
+            "peça para a pessoa falar com @userinfobot)"))
+        self._tg_contacts_box = QVBoxLayout()
+        self._tg_contacts_box.setSpacing(6)
+        self._tg_rows: list = []
+        root.addLayout(self._tg_contacts_box)
+        add_contact = QPushButton("＋  Adicionar contato")
+        add_contact.setObjectName("ghost")
+        add_contact.clicked.connect(lambda: self._add_tg_contact())
+        root.addWidget(add_contact, alignment=Qt.AlignLeft)
 
         tg_ev_box = QWidget(); tg_ev_l = QHBoxLayout(tg_ev_box)
         tg_ev_l.setContentsMargins(0, 0, 0, 0)
@@ -151,7 +159,7 @@ class GlobalSettings(QWidget):
         root.addWidget(_lbl_section("Eventos que disparam Telegram"))
         root.addWidget(tg_ev_box)
 
-        tg_test_btn = QPushButton("📨  Enviar Telegram de teste")
+        tg_test_btn = QPushButton("📨  Enviar Telegram de teste (todos os contatos)")
         tg_test_btn.clicked.connect(self._send_test_telegram)
         root.addWidget(tg_test_btn, alignment=Qt.AlignLeft)
 
@@ -190,18 +198,43 @@ class GlobalSettings(QWidget):
     def _load_telegram(self, t: dict):
         self._tg_enabled.setChecked(bool(t.get("enabled", False)))
         self._tg_token.setText(t.get("bot_token", ""))
-        self._tg_chat.setText(t.get("chat_id", ""))
+        for row in list(self._tg_rows):
+            self._remove_tg_row(row)
+        contacts = t.get("contacts", []) or []
+        for c in contacts:
+            self._add_tg_contact(c)
+        if not contacts:
+            self._add_tg_contact()  # começa com uma linha vazia pra preencher
         ev = t.get("events", {}) or {}
         self._tg_ev_start.setChecked(bool(ev.get("start", True)))
         self._tg_ev_done.setChecked(bool(ev.get("done", True)))
         self._tg_ev_error.setChecked(bool(ev.get("error", True)))
         self._tg_ev_stream.setChecked(bool(ev.get("stream_reconnect", True)))
 
+    def _add_tg_contact(self, contact: dict | None = None):
+        row = _TgContactRow(
+            contact or {"name": "", "chat_id": "", "enabled": True},
+            on_test=self._send_test_telegram_to,
+            on_remove=self._remove_tg_row,
+        )
+        self._tg_rows.append(row)
+        self._tg_contacts_box.addWidget(row)
+
+    def _remove_tg_row(self, row):
+        if row in self._tg_rows:
+            self._tg_rows.remove(row)
+        self._tg_contacts_box.removeWidget(row)
+        row.deleteLater()
+
     def _gather_telegram_cfg(self) -> dict:
+        contacts = [r.value() for r in self._tg_rows]
+        # Linhas totalmente vazias (ex.: a linha inicial não preenchida) não
+        # viram contato.
+        contacts = [c for c in contacts if c["name"] or c["chat_id"]]
         return {
             "enabled": self._tg_enabled.isChecked(),
             "bot_token": self._tg_token.text().strip(),
-            "chat_id": self._tg_chat.text().strip(),
+            "contacts": contacts,
             "events": {
                 "start": self._tg_ev_start.isChecked(),
                 "done": self._tg_ev_done.isChecked(),
@@ -213,14 +246,27 @@ class GlobalSettings(QWidget):
     def _send_test_telegram(self):
         cfg = self._gather_telegram_cfg()
         if not telegram_notifier.is_configured(cfg):
-            self._log("📨 Preencha o token do bot e o chat ID antes de testar.", "warn")
+            self._log("📨 Preencha o token do bot e ao menos um contato (com chat ID, "
+                      "habilitado) antes de testar.", "warn")
             return
         self._log("📨 Enviando Telegram de teste…", "info")
+        for c in telegram_notifier.active_contacts(cfg):
+            self._send_test_telegram_to(c)
+
+    def _send_test_telegram_to(self, contact: dict):
+        """Teste para UM contato (botão da própria linha), usando o token
+        digitado na tela (mesmo antes de salvar)."""
+        cfg = self._gather_telegram_cfg()
+        name = (contact.get("name") or "").strip() or contact.get("chat_id", "")
+        if not cfg["bot_token"] or not str(contact.get("chat_id", "")).strip():
+            self._log("📨 Preencha o token do bot e o chat ID deste contato antes de testar.", "warn")
+            return
         telegram_notifier.notify_async(
             cfg,
-            "AutoTrigger V10 — mensagem de teste. Se você recebeu, os alertas "
-            "estão configurados corretamente.",
+            f"AutoTrigger V10 — mensagem de teste para {name}. Se você recebeu, "
+            "os alertas estão configurados corretamente.",
             log=self._log,
+            contacts=[{"name": name, "chat_id": str(contact["chat_id"]).strip()}],
         )
 
     def _gather_email_cfg(self) -> dict:
@@ -310,4 +356,43 @@ class GlobalSettings(QWidget):
 def _lbl_section(text: str) -> QLabel:
     lab = QLabel(text)
     lab.setObjectName("muted")
+    lab.setWordWrap(True)
     return lab
+
+
+class _TgContactRow(QWidget):
+    """Uma linha de contato do Telegram: [✓ ativo] [nome] [chat_id] [testar] [remover]."""
+
+    def __init__(self, contact: dict, on_test: Callable, on_remove: Callable):
+        super().__init__()
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+
+        self._enabled = QCheckBox()
+        self._enabled.setToolTip("Contato ativo (desmarque para pausar os alertas dele)")
+        self._enabled.setChecked(bool(contact.get("enabled", True)))
+        self._name = QLineEdit(contact.get("name", ""))
+        self._name.setPlaceholderText("nome (ex.: João — plantão)")
+        self._chat = QLineEdit(str(contact.get("chat_id", "")))
+        self._chat.setPlaceholderText("chat_id")
+
+        test = QPushButton("📨"); test.setObjectName("icon")
+        test.setToolTip("Enviar mensagem de teste só para este contato")
+        test.clicked.connect(lambda: on_test(self.value()))
+        rm = QPushButton("✕"); rm.setObjectName("icon_danger")
+        rm.setToolTip("Remover contato")
+        rm.clicked.connect(lambda: on_remove(self))
+
+        lay.addWidget(self._enabled)
+        lay.addWidget(self._name, 2)
+        lay.addWidget(self._chat, 2)
+        lay.addWidget(test)
+        lay.addWidget(rm)
+
+    def value(self) -> dict:
+        return {
+            "name": self._name.text().strip(),
+            "chat_id": self._chat.text().strip(),
+            "enabled": self._enabled.isChecked(),
+        }

@@ -32,6 +32,7 @@ class AudioPlayer:
         self._is_streaming = False
         self._stream_lock = threading.Lock()
         self._output_device_id = ""   # ID MMDevice Windows do dispositivo de saída
+        self._volume = 100            # % (0-200; acima de 100 = ganho/amplificação do VLC)
         self._log = lambda msg, level="info": print(f"[Player][{level}] {msg}")
 
         if VLC_AVAILABLE:
@@ -78,16 +79,19 @@ class AudioPlayer:
     def set_log(self, callback):
         self._log = callback
 
-    def play(self, source: str, duration_seconds: int = 0) -> bool:
+    def play(self, source: str, duration_seconds: int = 0, volume: int = 100) -> bool:
         """
         Reproduz um arquivo local ou URL de stream/playlist.
         duration_seconds > 0 → usa timer fixo (para streaming online).
+        volume: ganho em % (0-200; 100 = normal, >100 amplifica). Vale só para
+        esta reprodução -- toda chamada redefine (arquivos de áudio usam 100).
         Retorna True se iniciou sem erros.
         """
         if not self.is_vlc_available():
             self._log("VLC não disponível.", "error")
             return False
 
+        self._volume = max(0, min(200, int(volume)))
         self.stop()
         self._generation += 1
         gen = self._generation
@@ -164,10 +168,22 @@ class AudioPlayer:
                 media = self._instance.media_new(source)
                 self._player.set_media(media)
                 self._player.play()
+            self._apply_volume()
             return True
         except Exception as exc:
             self._log(f"Erro ao reproduzir '{source}': {exc}", "error")
             return False
+
+    def _apply_volume(self):
+        """Aplica o ganho ao player atual. O VLC ignora (retorna -1) o volume
+        enquanto a saída de áudio ainda não abriu -- por isso também é
+        reaplicado quando o estado vira Playing (ver _await_playing)."""
+        if self._player is None:
+            return
+        try:
+            self._player.audio_set_volume(self._volume)
+        except Exception as exc:
+            self._log(f"Aviso ao ajustar volume: {exc}", "warn")
 
     def _monitor_playback(self, source: str, is_playlist: bool,
                           duration_seconds: int, generation: int):
@@ -218,6 +234,7 @@ class AudioPlayer:
             except Exception:
                 return False
             if st == vlc.State.Playing:
+                self._apply_volume()
                 return True
             time.sleep(0.3)
         return False

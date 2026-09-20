@@ -601,7 +601,9 @@ def _summary(step: dict) -> str:
     if t == "play_audio":
         return os.path.basename(step.get("file", ""))[:34]
     if t == "stream":
-        return f"{step.get('url','')[:22]} · {fmt_secs(step.get('duration_seconds',0))}"
+        vol = int(step.get("volume_percent", 100))
+        gain = f" · {vol}%" if vol != 100 else ""
+        return f"{step.get('url','')[:22]} · {fmt_secs(step.get('duration_seconds',0))}{gain}"
     if t == "wait_time":
         return fmt_secs(step.get("seconds", 0))
     if t == "wait_keyword":

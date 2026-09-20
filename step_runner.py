@@ -134,10 +134,12 @@ class StepRunner:
         if not url:
             self._log("URL de stream não configurada.", "warn")
             return True
-        self._log(f"Streaming: {label} ({duration}s)")
+        volume = int(step.get("volume_percent", 100))
+        gain_txt = f", ganho {volume}%" if volume != 100 else ""
+        self._log(f"Streaming: {label} ({duration}s{gain_txt})")
         done_ev = threading.Event()
         self._player.set_on_finished(lambda: done_ev.set())
-        if not self._player.play(url, duration_seconds=duration):
+        if not self._player.play(url, duration_seconds=duration, volume=volume):
             self._log(f"Falha ao iniciar stream: {label}", "error")
             return True
         elapsed = 0.0

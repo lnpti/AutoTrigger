@@ -14,7 +14,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,
-    QComboBox, QPushButton, QFileDialog, QFrame,
+    QComboBox, QPushButton, QFileDialog, QFrame, QSpinBox,
 )
 
 
@@ -233,6 +233,18 @@ class StepEditor(QWidget):
             dur = TimeField(int(s.get("duration_seconds", 300)))
             self._w["dur"] = dur
             self._form.addRow(_lbl("Duração"), dur)
+            vol_host = QWidget(); vol_l = QHBoxLayout(vol_host)
+            vol_l.setContentsMargins(0, 0, 0, 0)
+            vol = QSpinBox()
+            vol.setRange(0, 200)
+            vol.setSuffix(" %")
+            vol.setMaximumWidth(110)
+            vol.setValue(int(s.get("volume_percent", 100)))
+            vol_hint = QLabel("100% = normal · acima de 100% amplifica (ganho)")
+            vol_hint.setObjectName("dim")
+            vol_l.addWidget(vol); vol_l.addWidget(vol_hint); vol_l.addStretch(1)
+            self._w["volume"] = vol
+            self._form.addRow(_lbl("Ganho de volume"), vol_host)
             self._add_label_row(s, default="Stream")
 
         elif t == "wait_time":
@@ -314,6 +326,7 @@ class StepEditor(QWidget):
         elif t == "stream":
             step["url"] = w["url"].text().strip()
             step["duration_seconds"] = w["dur"].seconds()
+            step["volume_percent"] = w["volume"].value()
             step["label"] = label or "Stream"
         elif t == "wait_time":
             step["seconds"] = w["secs"].seconds()
