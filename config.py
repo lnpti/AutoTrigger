@@ -272,6 +272,30 @@ class Config:
 
     # ── global ───────────────────────────────────────────────────────────────
 
+    def export_to(self, path: str, include_secrets: bool = False):
+        """Grava uma cópia de TODA a configuração (global + sequências) em `path`.
+
+        Sem `include_secrets`, a senha do e-mail e o token do bot do Telegram
+        saem em branco -- o arquivo pode ser compartilhado sem vazar acesso.
+        O formato é o mesmo do config.json (+ um bloco "_export" informativo).
+        """
+        from datetime import datetime
+        try:
+            from version import __version__ as app_version
+        except Exception:
+            app_version = ""
+        data = copy.deepcopy(self._data)
+        if not include_secrets:
+            data.get("global", {}).get("email", {})["password"] = ""
+            data.get("global", {}).get("telegram", {})["bot_token"] = ""
+        data["_export"] = {
+            "app_version": app_version,
+            "exported_at": datetime.now().isoformat(timespec="seconds"),
+            "includes_secrets": include_secrets,
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
     def get_global(self) -> dict:
         return self._data.get("global", {})
 
@@ -336,6 +360,9 @@ class Config:
             "name": "Nova Sequência",
             "keyword_trigger": "",
             "trigger_source": "txt",  # "txt" | "medialog" | "both"
+            # True: a keyword tem de ser IGUAL ao nome do arquivo (não só estar
+            # contida) -- dispensa o ';' no fim.
+            "keyword_exact": False,
             # True: com gatilho do log do player, espera o áudio terminar e só
             # então conta o atraso fixo.
             "delay_from_audio_end": False,

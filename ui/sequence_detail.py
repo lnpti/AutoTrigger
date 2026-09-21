@@ -187,7 +187,9 @@ class SequenceDetail(QWidget):
         self._source.setToolTip(
             "TXT: keyword dentro do arquivo TXT monitorado.\n"
             "Log do player: keyword dentro do NOME do áudio que entrou em execução "
-            "no V10 Player Network (pasta de XMLs em Configurações Globais).")
+            "no V10 Player Network (pasta de XMLs em Configurações Globais).\n"
+            "Terminar a keyword com ';' (ex.: ESPORTE 4H;) casa só quando o nome "
+            "TERMINA ali (sem a extensão), igual ao TXT.")
         self._source.currentIndexChanged.connect(self._on_source_changed)
         grid.addWidget(self._source, 0, 1)
         grid.addWidget(_lbl("Keyword"), 1, 0)
@@ -195,20 +197,28 @@ class SequenceDetail(QWidget):
         self._kw.setPlaceholderText("ex: ESPORTE")
         self._kw.editingFinished.connect(self._save_fields)
         grid.addWidget(self._kw, 1, 1)
-        grid.addWidget(_lbl("Atraso após gatilho"), 2, 0)
+        self._exact = QCheckBox("Nome exato do arquivo (dispensa o ';' no fim)")
+        self._exact.setToolTip(
+            "Ligado: digite só o nome do arquivo (sem extensão e sem ';'). A keyword "
+            "precisa ser IGUAL ao nome inteiro -- 'ESPORTE 4H' não dispara com "
+            "'ESPORTE 4H5' nem com o segundo campo da linha do TXT. "
+            "Desligado: basta a keyword estar contida (como antes).")
+        self._exact.stateChanged.connect(lambda _=0: self._save_fields())
+        grid.addWidget(self._exact, 2, 1)
+        grid.addWidget(_lbl("Atraso após gatilho"), 3, 0)
         self._delay = TimeField(0)
         self._delay.changed.connect(self._save_fields_debounced)
-        grid.addWidget(self._delay, 2, 1)
+        grid.addWidget(self._delay, 3, 1)
         self._audio_end = QCheckBox("Deixar o áudio terminar antes de contar o atraso")
         self._audio_end.setToolTip(
             "Só vale quando o gatilho vem do log do player: o disparo acontece "
             "quando o áudio entra no ar; a sequência espera ele acabar (tempo "
             "lido do XML) e só então conta o atraso acima e roda as etapas.")
         self._audio_end.stateChanged.connect(lambda _=0: self._save_fields())
-        grid.addWidget(self._audio_end, 3, 1)
+        grid.addWidget(self._audio_end, 4, 1)
         self._enabled = QCheckBox("Sequência habilitada")
         self._enabled.stateChanged.connect(lambda _=0: self._save_fields())
-        grid.addWidget(self._enabled, 4, 1)
+        grid.addWidget(self._enabled, 5, 1)
         grid.setColumnStretch(1, 1)
         v.addLayout(grid)
 
@@ -258,6 +268,9 @@ class SequenceDetail(QWidget):
         idx = self._source.findData(seq.get("trigger_source", "txt"))
         self._source.setCurrentIndex(idx if idx >= 0 else 0)
         self._source.blockSignals(False)
+        self._exact.blockSignals(True)
+        self._exact.setChecked(bool(seq.get("keyword_exact", False)))
+        self._exact.blockSignals(False)
         self._audio_end.blockSignals(True)
         self._audio_end.setChecked(bool(seq.get("delay_from_audio_end", False)))
         self._audio_end.blockSignals(False)
@@ -297,6 +310,7 @@ class SequenceDetail(QWidget):
         self._seq["name"] = self._name.text().strip() or "Sequência"
         self._seq["keyword_trigger"] = self._kw.text().strip().upper()
         self._seq["trigger_source"] = self._source.currentData() or "txt"
+        self._seq["keyword_exact"] = self._exact.isChecked()
         self._seq["delay_from_audio_end"] = self._audio_end.isChecked()
         self._seq["trigger_delay_seconds"] = self._delay.seconds()
         self._seq["enabled"] = self._enabled.isChecked()

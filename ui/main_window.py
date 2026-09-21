@@ -126,7 +126,7 @@ class MainWindow(QMainWindow):
         self._quit_fn = None
 
         self.setWindowTitle("AutoTrigger V10")
-        self.resize(1040, 720)
+        self.resize(1060, 720)
         self.setMinimumSize(880, 560)
         ico = _asset_icon()
         if ico:
@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
         body.addWidget(self._stack)
         body.setStretchFactor(0, 0)
         body.setStretchFactor(1, 1)
-        body.setSizes([260, 780])
+        body.setSizes([280, 780])
         outer.addWidget(body, 1)
 
         # log

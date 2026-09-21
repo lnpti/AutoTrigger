@@ -139,7 +139,8 @@ class SequenceEngine:
                 cb = lambda ctx, _sid=sid: self._on_trigger(_sid, ctx)
             else:
                 cb = lambda _sid=sid: self._on_trigger(_sid)
-            self._file_monitor.register_keyword(kw, cb, source)
+            self._file_monitor.register_keyword(kw, cb, source,
+                                                exact=bool(seq.get("keyword_exact")))
 
     # ── execution ─────────────────────────────────────────────────────────────
 

@@ -1,3 +1,30 @@
+## AutoTrigger V10 — v2.3.15
+
+### Keyword "nome exato do arquivo"
+
+- Nova caixa na sequência: **"Nome exato do arquivo (dispensa o ';' no fim)"**.
+  Ligada, basta digitar o nome do arquivo (sem extensão e sem `;`) e a keyword
+  só dispara quando for **igual ao nome inteiro** -- `ESPORTE 3h15mim` não
+  dispara com `ESPORTE 3h` nem com `ESPORTE 4h`. Funciona no TXT (o nome é o
+  que vem antes do `;` da linha) e no log do player.
+- Desligada (padrão), tudo continua como antes: basta a keyword estar contida
+  no texto, e o `;` no fim continua valendo.
+- No log do player, terminar a keyword com `;` também casa só quando o nome
+  termina ali (sem a extensão), igual ao TXT.
+- A mesma palavra pode ter um gatilho "contém" e outro "nome exato" ao mesmo
+  tempo, sem um sobrescrever o outro.
+
+### Exportar configurações
+
+- Novo botão **Exportar configurações…** em Configurações Globais: salva todas
+  as configurações e sequências num arquivo `.json`. Pergunta se inclui a senha
+  do e-mail e o token do Telegram (por padrão, não -- saem em branco).
+
+### Interface
+
+- A coluna de sequências abre 20 px mais larga (a janela também, para o painel
+  de detalhe manter o tamanho).
+
 ## AutoTrigger V10 — v2.3.14
 
 ### Disparo pelo log do player (V10 Player Network)

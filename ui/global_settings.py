@@ -10,7 +10,7 @@ from typing import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QComboBox, QPushButton, QFileDialog, QCheckBox, QSpinBox,
+    QComboBox, QPushButton, QFileDialog, QCheckBox, QSpinBox, QMessageBox,
 )
 
 import audio_manager as _audio
@@ -205,6 +205,12 @@ class GlobalSettings(QWidget):
         root.addStretch(1)
 
         btns = QHBoxLayout()
+        export = QPushButton("📤  Exportar configurações…")
+        export.setObjectName("ghost")
+        export.setToolTip("Salva todas as configurações e sequências num arquivo .json "
+                          "(o que está SALVO — clique em Salvar antes se alterou algo).")
+        export.clicked.connect(self._export_config)
+        btns.addWidget(export)
         btns.addStretch(1)
         save = QPushButton("Salvar configurações")
         save.setObjectName("primary")
@@ -369,6 +375,33 @@ class GlobalSettings(QWidget):
             if d["id"] == cur_id:
                 combo.setCurrentIndex(i)
                 break
+
+    def _export_config(self):
+        from datetime import datetime
+        default = f"autotrigger-config-{datetime.now():%Y%m%d-%H%M}.json"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar configurações", default, "Configuração (*.json)")
+        if not path:
+            return
+        # Senha do e-mail e token do Telegram são credenciais: por padrão NÃO vão.
+        with_secrets = QMessageBox.question(
+            self, "Exportar configurações",
+            "Incluir a senha do e-mail e o token do bot do Telegram no arquivo?"
+            "\n\n"
+            "Escolha \"Não\" se for compartilhar o arquivo — esses campos saem em "
+            "branco. Escolha \"Sim\" para um backup seu ou para levar tudo a outro "
+            "computador (guarde o arquivo em local seguro).",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        ) == QMessageBox.Yes
+        try:
+            self._config.export_to(path, include_secrets=with_secrets)
+        except OSError as exc:
+            self._log(f"Não consegui exportar as configurações: {exc}", "error")
+            return
+        n = len(self._config.get_sequences())
+        self._log(f"Configurações exportadas ({n} sequência(s)"
+                  f"{', com senhas/tokens' if with_secrets else ', sem senhas/tokens'}): "
+                  f"{path}", "success")
 
     def _browse_medialog(self):
         path = QFileDialog.getExistingDirectory(
