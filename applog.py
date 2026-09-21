@@ -46,6 +46,11 @@ def _resolve_log_dir() -> str:
     return log_dir
 
 
+def log_dir() -> str:
+    """Pasta dos arquivos de log (autotrigger.log, crash.log, last_session.txt)."""
+    return _resolve_log_dir()
+
+
 def init(level: int = logging.INFO) -> logging.Logger:
     """Inicializa o logger (idempotente) e instala os excepthooks."""
     global _logger
@@ -99,6 +104,15 @@ def log(msg: str, level: str = "info"):
             sink(msg, level)
         except Exception:
             pass
+
+
+def trace(msg: str):
+    """Detalhe fino SÓ para o arquivo de log (não vai para a tela). Usado para
+    rastrear passos de risco (hotkey/mute): se o app cair no meio, a última
+    linha "·" mostra até onde chegou."""
+    if _logger is None:
+        init()
+    _logger.info("· %s", msg)
 
 
 def _install_excepthooks():

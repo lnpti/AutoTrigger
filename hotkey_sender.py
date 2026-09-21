@@ -97,17 +97,22 @@ def send_hotkey_to_window(hotkey_str: str, window_title: str) -> bool:
         applog.log("pywin32 indisponível — enviando para janela ativa.", "warn")
         return send_hotkey(hotkey_str)
 
+    applog.trace(f"hotkey '{hotkey_str}' -> janela '{window_title}': início")
     _dismiss_screensaver()
+    applog.trace("protetor de tela verificado; procurando a janela")
 
     hwnd = _find_window(window_title)
+    applog.trace(f"janela encontrada: hwnd={hwnd}")
     if not hwnd:
         applog.log(f"Janela '{window_title}' não encontrada — enviando para "
                     f"janela ativa.", "warn")
         return send_hotkey(hotkey_str)
 
     prev = win32gui.GetForegroundWindow()
+    applog.trace(f"janela em foco antes: hwnd={prev}")
     try:
         focused = _focus_window(hwnd)
+        applog.trace(f"foco confirmado={focused}")
         if not focused:
             applog.log(
                 f"Não foi possível confirmar o foco na janela '{window_title}' "
@@ -116,7 +121,9 @@ def send_hotkey_to_window(hotkey_str: str, window_title: str) -> bool:
             )
         time.sleep(0.12)
         import keyboard
+        applog.trace(f"keyboard.send('{hotkey_str}') ...")
         keyboard.send(hotkey_str)
+        applog.trace("keyboard.send concluído")
         time.sleep(0.08)
         return True
     except Exception as exc:
@@ -126,7 +133,9 @@ def send_hotkey_to_window(hotkey_str: str, window_title: str) -> bool:
         # Devolve o foco à janela anterior
         try:
             if prev and prev != hwnd:
+                applog.trace(f"devolvendo o foco a hwnd={prev}")
                 _focus_window(prev)
+                applog.trace("foco devolvido")
         except Exception:
             pass
 
@@ -205,29 +214,36 @@ def _focus_window(hwnd) -> bool:
     fg_thread = win32process.GetWindowThreadProcessId(fg_hwnd)[0] if fg_hwnd else 0
     target_thread = win32process.GetWindowThreadProcessId(hwnd)[0]
 
+    applog.trace(f"foco: thread atual={cur_thread}, thread em foco={fg_thread}, "
+                 f"thread alvo={target_thread}")
     attached = []
     for tid in (fg_thread, target_thread):
         if tid and tid != cur_thread:
             try:
+                applog.trace(f"AttachThreadInput(anexar {tid}) ...")
                 win32process.AttachThreadInput(cur_thread, tid, True)
                 attached.append(tid)
             except Exception:
                 pass
     try:
         try:
+            applog.trace("SetForegroundWindow ...")
             win32gui.SetForegroundWindow(hwnd)
         except Exception:
             pass
         try:
+            applog.trace("BringWindowToTop ...")
             win32gui.BringWindowToTop(hwnd)
         except Exception:
             pass
     finally:
         for tid in attached:
             try:
+                applog.trace(f"AttachThreadInput(soltar {tid}) ...")
                 win32process.AttachThreadInput(cur_thread, tid, False)
             except Exception:
                 pass
+        applog.trace("foco: threads soltas")
 
     return win32gui.GetForegroundWindow() == hwnd
 

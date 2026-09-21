@@ -36,6 +36,12 @@ class GlobalSettings(QWidget):
         self._build()
         self._load()
 
+    @staticmethod
+    def _section_gap(root):
+        """Separação entre seções: respiro + linha fina (antes era só 6 px)."""
+        root.addSpacing(14)
+        root.addWidget(hline())
+
     def _build(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 16, 18, 16)
@@ -61,9 +67,12 @@ class GlobalSettings(QWidget):
             "janela. Clique no ícone (ou reabra o atalho) para ver a janela.")
         root.addWidget(self._boot_windows)
         root.addWidget(self._boot_min)
-        root.addSpacing(6)
+        self._section_gap(root)
 
         # TXT
+        sec_txt = QLabel("GATILHO POR ARQUIVO TXT")
+        sec_txt.setObjectName("section")
+        root.addWidget(sec_txt)
         txt_host = QWidget(); txt_l = QHBoxLayout(txt_host)
         txt_l.setContentsMargins(0, 0, 0, 0)
         self._txt = QLineEdit()
@@ -73,7 +82,7 @@ class GlobalSettings(QWidget):
         root.addWidget(LabeledRow("Arquivo TXT", txt_host, label_w=120))
 
         # ── Log do player (XMLs do V10 Player Network) ────────────────────────
-        root.addSpacing(6)
+        self._section_gap(root)
         sec_ml = QLabel("LOG DO PLAYER (V10 PLAYER NETWORK)")
         sec_ml.setObjectName("section")
         root.addWidget(sec_ml)
@@ -94,7 +103,7 @@ class GlobalSettings(QWidget):
 
         sec = QLabel("DISPOSITIVOS PADRÃO")
         sec.setObjectName("section")
-        root.addSpacing(6)
+        self._section_gap(root)
         root.addWidget(sec)
 
         self._in_combo = QComboBox()
@@ -107,7 +116,7 @@ class GlobalSettings(QWidget):
         root.addWidget(refresh, alignment=Qt.AlignLeft)
 
         # ── Alertas por email ──────────────────────────────────────────────────
-        root.addSpacing(6)
+        self._section_gap(root)
         sec_mail = QLabel("ALERTAS POR E-MAIL")
         sec_mail.setObjectName("section")
         root.addWidget(sec_mail)
@@ -161,7 +170,7 @@ class GlobalSettings(QWidget):
         root.addWidget(test_btn, alignment=Qt.AlignLeft)
 
         # ── Alertas por Telegram ─────────────────────────────────────────────────
-        root.addSpacing(6)
+        self._section_gap(root)
         sec_tg = QLabel("ALERTAS POR TELEGRAM")
         sec_tg.setObjectName("section")
         root.addWidget(sec_tg)

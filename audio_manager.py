@@ -90,13 +90,19 @@ def set_device_mute(device_id: str, mute: bool) -> bool:
     """
     if not device_id:
         return False
+    import applog
+    acao = "mutar" if mute else "desmutar"
+    applog.trace(f"{acao}: CoInitialize ...")
     _ensure_com()
     try:
+        applog.trace(f"{acao}: obtendo dispositivo ...")
         enumerator = AudioUtilities.GetDeviceEnumerator()
         imm_device = enumerator.GetDevice(device_id)
         interface = imm_device.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
         volume = cast(interface, POINTER(IAudioEndpointVolume))
+        applog.trace(f"{acao}: SetMute ...")
         volume.SetMute(1 if mute else 0, None)
+        applog.trace(f"{acao}: concluído")
         with _ledger_lock:
             if mute:
                 _muted_by_app.add(device_id)

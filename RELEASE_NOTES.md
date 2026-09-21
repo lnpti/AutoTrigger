@@ -1,3 +1,24 @@
+## AutoTrigger V10 — v2.3.18
+
+### Diagnóstico de quedas e travamentos (permanente)
+
+- **`crash.log`** (na pasta de logs, junto do `autotrigger.log`): se o app cair de
+  verdade, grava a pilha de todas as threads, mostrando em que linha do código ele
+  estava. Gira sozinho ao passar de ~500 KB.
+- **Aviso de sessão anterior:** se o app foi fechado sem terminar normalmente
+  (queda, finalizado à força, falta de energia), a abertura seguinte registra um
+  aviso no `autotrigger.log`. A atualização automática não gera esse aviso.
+- **Vigia de travamento:** se a interface ficar mais de 8 s sem responder, a pilha
+  das threads é gravada no `crash.log` e o `autotrigger.log` avisa quando ela volta.
+- **Rastro fino no `autotrigger.log`** (linhas com `·`, só no arquivo): cada
+  micro-passo do mute e do envio de hotkey (foco da janela, `keyboard.send`...).
+  Se o app cair no meio, a última linha `·` mostra até onde chegou.
+
+### Interface
+
+- **Configurações Globais:** seções bem mais separadas (linha fina e mais espaço
+  entre elas), e o arquivo TXT ganhou um título próprio ("Gatilho por arquivo TXT").
+
 ## AutoTrigger V10 — v2.3.17
 
 - **Origem do gatilho: só "Arquivo TXT" ou "Log do player".** A opção "TXT ou log

@@ -176,6 +176,13 @@ def main():
         # ser avisada pra se mostrar. Não abre uma segunda janela/instância.
         return
 
+    # Diagnóstico de queda/travamento (crash.log + aviso de sessão anterior que
+    # não fechou normalmente). Só na instância principal.
+    import crashdiag
+    from version import __version__ as _app_version
+    crashdiag.install(applog.log_dir(), _app_version, applog.log)
+    crashdiag.start_freeze_watchdog(app, applog.log)
+
     _suppress_screensaver_and_sleep()
 
     apply_theme(app)

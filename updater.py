@@ -251,6 +251,11 @@ del "%~f0"
         # liberado e o batch ficaria preso no loop de espera do PID, nunca
         # instalando a atualização. os._exit() encerra o processo inteiro a
         # partir de qualquer thread.
+        try:  # não conta como "queda" na próxima abertura (ver crashdiag)
+            import crashdiag
+            crashdiag.mark_clean("atualização automática")
+        except Exception:
+            pass
         os._exit(0)
 
     # ── private ─────────────────────────────────────────────────────────────
