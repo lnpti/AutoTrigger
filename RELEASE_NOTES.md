@@ -1,3 +1,16 @@
+## AutoTrigger V10 — v2.3.16
+
+Esta versão **volta ao comportamento da v2.3.14** (gatilhos, log do player,
+atraso, Telegram, volume em dB, inicialização) e acrescenta só o abaixo. As
+novidades da v2.3.15 ("nome exato do arquivo", `;` no log do player e coluna de
+sequências mais larga) foram **retiradas** até serem investigadas.
+
+- **Exportar configurações:** novo botão em Configurações Globais que salva todas
+  as configurações e sequências num arquivo `.json`. Pergunta se inclui a senha
+  do e-mail e o token do Telegram (por padrão, não -- saem em branco).
+- **Visual:** os cards da coluna de sequências ficam mais perto da lateral do app
+  (margem de 10 px para 4 px).
+
 ## AutoTrigger V10 — v2.3.15
 
 ### Keyword "nome exato do arquivo"

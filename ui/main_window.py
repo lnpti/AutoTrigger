@@ -126,7 +126,7 @@ class MainWindow(QMainWindow):
         self._quit_fn = None
 
         self.setWindowTitle("AutoTrigger V10")
-        self.resize(1060, 720)
+        self.resize(1040, 720)
         self.setMinimumSize(880, 560)
         ico = _asset_icon()
         if ico:
@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
         body.addWidget(self._stack)
         body.setStretchFactor(0, 0)
         body.setStretchFactor(1, 1)
-        body.setSizes([280, 780])
+        body.setSizes([260, 780])
         outer.addWidget(body, 1)
 
         # log
@@ -238,7 +238,7 @@ class MainWindow(QMainWindow):
         side = QFrame(); side.setObjectName("sidebar")
         side.setMinimumWidth(220); side.setMaximumWidth(360)
         lay = QVBoxLayout(side)
-        lay.setContentsMargins(10, 12, 10, 10)
+        lay.setContentsMargins(4, 12, 4, 10)
         lay.setSpacing(8)
 
         title_bar = QHBoxLayout()

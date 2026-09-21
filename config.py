@@ -360,9 +360,6 @@ class Config:
             "name": "Nova Sequência",
             "keyword_trigger": "",
             "trigger_source": "txt",  # "txt" | "medialog" | "both"
-            # True: a keyword tem de ser IGUAL ao nome do arquivo (não só estar
-            # contida) -- dispensa o ';' no fim.
-            "keyword_exact": False,
             # True: com gatilho do log do player, espera o áudio terminar e só
             # então conta o atraso fixo.
             "delay_from_audio_end": False,

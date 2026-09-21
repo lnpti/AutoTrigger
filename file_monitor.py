@@ -26,19 +26,6 @@ SOURCE_TXT = "txt"
 SOURCE_MEDIALOG = "medialog"
 
 
-_AUDIO_EXTS = (".WAV", ".MP3", ".WMA", ".FLAC", ".OGG", ".AAC", ".M4A", ".MP2", ".AIF", ".AIFF")
-
-
-def exact_name_key(keyword: str) -> str:
-    """Keyword -> nome a comparar no modo "nome exato": sem ';' final, sem
-    espaços nas pontas e sem extensão de áudio (se a pessoa a digitou)."""
-    k = keyword.strip().upper().rstrip(";").strip()
-    for ext in _AUDIO_EXTS:
-        if k.endswith(ext):
-            return k[: -len(ext)].strip()
-    return k
-
-
 class _Router:
     """Mapas keyword -> callback por origem + despacho do texto recebido."""
 
@@ -47,48 +34,30 @@ class _Router:
         self._lock = threading.Lock()
         self._maps = {SOURCE_TXT: {}, SOURCE_MEDIALOG: {}}
 
-    def add(self, keyword: str, callback, source: str, exact: bool = False):
+    def add(self, keyword: str, callback, source: str):
         with self._lock:
-            # Chave (texto, exato): a mesma palavra pode ter um gatilho "contém"
-            # e outro "nome exato" ao mesmo tempo, sem um sobrescrever o outro.
-            self._maps[source][(keyword.strip().upper(), bool(exact))] = callback
+            self._maps[source][keyword.strip().upper()] = callback
 
     def remove(self, keyword: str, source: str | None = None):
         kw = keyword.strip().upper()
         with self._lock:
             for src, m in self._maps.items():
                 if source is None or src == source:
-                    m.pop((kw, False), None)
-                    m.pop((kw, True), None)
+                    m.pop(kw, None)
 
     def clear(self):
         with self._lock:
             for m in self._maps.values():
                 m.clear()
 
-    def dispatch(self, source: str, content_upper, ctx: dict | None = None,
-                 names: list | None = None):
+    def dispatch(self, source: str, content_upper: str, ctx: dict | None = None):
         """Chama os callbacks casados. Na origem "medialog" o callback recebe
-        `ctx` (dados do áudio: nome, remaining_s...); na "txt", nenhum argumento.
-
-        `content_upper`: um texto, ou uma lista de textos alternativos (basta
-        a keyword estar contida em um deles).
-
-        `names`: os NOMES de arquivo em MAIÚSCULAS (sem extensão) presentes no
-        evento -- usados pelas keywords "nome exato", que só casam quando são
-        IGUAIS a um desses nomes (não basta estar contida)."""
-        texts = [content_upper] if isinstance(content_upper, str) else list(content_upper)
-        names = names or []
+        `ctx` (dados do áudio: nome, remaining_s...); na "txt", nenhum argumento."""
         with self._lock:
-            matched = []
-            for (kw, exact), cb in self._maps[source].items():
-                if not kw:
-                    continue
-                if exact:
-                    if exact_name_key(kw) in names:
-                        matched.append((kw, cb))
-                elif any(kw in t for t in texts):
-                    matched.append((kw, cb))
+            matched = [
+                (kw, cb) for kw, cb in self._maps[source].items()
+                if kw and kw in content_upper
+            ]
         for kw, cb in matched:
             self._log(f"▶ Keyword: '{kw}'")
             args = (ctx or {},) if source == SOURCE_MEDIALOG else ()
@@ -129,9 +98,7 @@ class _TxtHandler(FileSystemEventHandler):
                 return
             self._last_content = content
             self._log(f"TXT: '{content}'")
-            # Cada linha é "nome do arquivo;outro campo": o NOME é o que vem antes do ';'.
-            names = [ln.split(";")[0].strip() for ln in content.splitlines() if ln.strip()]
-            self._router.dispatch(SOURCE_TXT, content, names=names)
+            self._router.dispatch(SOURCE_TXT, content)
 
 
 # ── origem log do player (XMLs temporários) ───────────────────────────────────
@@ -179,19 +146,6 @@ def parse_medialog_xml(data: bytes) -> dict | None:
 
     return {"kind": root.tag, "name": name, "path": path,
             "played_ms": _ms("flt_tempo_exec_med"), "total_ms": _ms("flt_tempo_med")}
-
-
-def medialog_match_texts(name: str) -> list:
-    """Textos contra os quais a keyword é comparada para um nome de áudio.
-
-    1) o nome completo com extensão ("ESPORTE 4H.WAV");
-    2) o nome SEM extensão terminado em ";" ("ESPORTE 4H;").
-
-    O (2) espelha o TXT, onde cada nome termina com ";" -- uma keyword como
-    "ESPORTE 4H;" casa só quando o nome TERMINA ali (não casa "ESPORTE 4H5").
-    """
-    stem = ntpath.splitext(name)[0]
-    return [name.upper(), stem.upper() + ";"]
 
 
 class MediaLogWatcher:
@@ -304,9 +258,7 @@ class MediaLogWatcher:
         info["remaining_s"] = max(0.0, total - played - (time.time() - seen_at))
         self._log(f"🎵 Player: {info['name']} ({info['kind']}, "
                   f"{played:.1f}s de {total:.1f}s, faltam {info['remaining_s']:.1f}s)")
-        stem = ntpath.splitext(info["name"])[0].strip().upper()
-        self._router.dispatch(SOURCE_MEDIALOG, medialog_match_texts(info["name"]), info,
-                              names=[stem])
+        self._router.dispatch(SOURCE_MEDIALOG, info["name"].upper(), info)
 
 
 # ── fachada usada pelo engine ─────────────────────────────────────────────────
@@ -350,9 +302,8 @@ class FileMonitor:
                           "error")
         return started
 
-    def register_keyword(self, keyword: str, callback, source: str = SOURCE_TXT,
-                         exact: bool = False):
-        self._router.add(keyword, callback, source, exact)
+    def register_keyword(self, keyword: str, callback, source: str = SOURCE_TXT):
+        self._router.add(keyword, callback, source)
 
     def unregister_keyword(self, keyword: str, source: str | None = None):
         self._router.remove(keyword, source)
