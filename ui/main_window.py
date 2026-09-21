@@ -180,7 +180,8 @@ class MainWindow(QMainWindow):
         # callback dali -- precisa ser thread-safe (applog.log grava no
         # arquivo e repassa pro sink de UI via signal, não toca o LogView
         # direto como self.on_log faria).
-        self._global = GlobalSettings(self._config, self._on_global_saved, log=applog.log)
+        self._global = GlobalSettings(self._config, self._on_global_saved, log=applog.log,
+                                      on_imported=self._on_config_imported)
         # Em telas com escala do Windows alta (125%+), o conteúdo de
         # Configurações Globais pode ficar mais alto que a janela. Sem rolagem,
         # o Qt comprime as linhas para caber no espaço fixo (campos cortados/
@@ -459,6 +460,19 @@ class MainWindow(QMainWindow):
         self._selected_id = None
         self._global._load()
         self._stack.setCurrentWidget(self._global_scroll)
+
+    def _on_config_imported(self, summary: dict):
+        """Depois de importar um arquivo: refaz a lista de sequências e a tela
+        de configurações, e reinicia o monitor (caminhos/pasta podem ter mudado)."""
+        self._selected_id = None
+        self._load_sequences()      # reconstrói os cards
+        self._show_global()         # continua na tela de configurações, já recarregada
+        if self._engine.is_monitor_running():
+            self._engine.stop_monitor()
+            self._do_start_monitor()
+        self._engine.reload_sequences()
+        self._apply_output_device()
+        self._refresh_armed()
 
     def _on_global_saved(self):
         self.on_log("Configurações globais salvas.", "success")

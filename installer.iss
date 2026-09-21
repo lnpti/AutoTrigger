@@ -5,7 +5,7 @@
 ; ============================================================
 
 #define AppName    "AutoTrigger V10"
-#define AppVersion "2.3.18"
+#define AppVersion "2.3.19"
 #define AppPublisher "RobsonDV"
 #define AppURL     "https://github.com/lnpti/AutoTrigger"
 #define AppExe     "AutoTriggerV10.exe"

@@ -26,10 +26,12 @@ _DEV_CACHE = {"inputs": None, "outputs": None}
 
 
 class GlobalSettings(QWidget):
-    def __init__(self, config, on_saved: Callable, log: Callable | None = None):
+    def __init__(self, config, on_saved: Callable, log: Callable | None = None,
+                 on_imported: Callable | None = None):
         super().__init__()
         self._config = config
         self._on_saved = on_saved
+        self._on_imported = on_imported
         self._log = log or (lambda msg, level="info": None)
         self._inputs: list = []
         self._outputs: list = []
@@ -220,6 +222,12 @@ class GlobalSettings(QWidget):
                           "(o que está SALVO — clique em Salvar antes se alterou algo).")
         export.clicked.connect(self._export_config)
         btns.addWidget(export)
+        imp = QPushButton("📥  Importar configurações…")
+        imp.setObjectName("ghost")
+        imp.setToolTip("Carrega configurações e sequências de um arquivo .json "
+                       "exportado antes (substituindo tudo ou só adicionando as sequências).")
+        imp.clicked.connect(self._import_config)
+        btns.addWidget(imp)
         btns.addStretch(1)
         save = QPushButton("Salvar configurações")
         save.setObjectName("primary")
@@ -384,6 +392,70 @@ class GlobalSettings(QWidget):
             if d["id"] == cur_id:
                 combo.setCurrentIndex(i)
                 break
+
+    def _ask_import_mode(self, n_seq: int) -> str | None:
+        """Pergunta como importar. Retorna "replace", "merge" ou None (cancelou)."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Importar configurações")
+        box.setIcon(QMessageBox.Question)
+        box.setText(f"O arquivo tem {n_seq} sequência(s). Como importar?")
+        box.setInformativeText(
+            "Substituir tudo: troca as configurações globais e TODAS as sequências "
+            "pelas do arquivo. Uma cópia da configuração atual é salva antes. "
+            "Senha do e-mail e token do Telegram em branco no arquivo não apagam "
+            "os atuais.\n\n"
+            "Só adicionar as sequências: acrescenta as do arquivo às que você já "
+            "tem, sem mexer em mais nada.\n\n"
+            "Atenção: dispositivos de áudio (mic, saída e os passos de mute/unmute) "
+            "são do computador de origem — em outro PC talvez seja preciso "
+            "escolhê-los de novo."
+        )
+        b_replace = box.addButton("Substituir tudo", QMessageBox.DestructiveRole)
+        b_merge = box.addButton("Só adicionar as sequências", QMessageBox.AcceptRole)
+        b_cancel = box.addButton("Cancelar", QMessageBox.RejectRole)
+        box.setDefaultButton(b_merge)     # a opção que não apaga nada
+        box.setEscapeButton(b_cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is b_replace:
+            return "replace"
+        if clicked is b_merge:
+            return "merge"
+        return None
+
+    def _import_config(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Importar configurações", "", "Configuração (*.json);;Todos (*.*)")
+        if not path:
+            return
+        try:
+            incoming = self._config.read_import(path)
+        except ValueError as exc:
+            self._log(f"Não consegui importar: {exc}", "error")
+            QMessageBox.warning(self, "Importar configurações",
+                                f"Não consegui importar este arquivo:\n\n{exc}")
+            return
+        mode = self._ask_import_mode(len(incoming["sequences"]))
+        if mode is None:
+            return
+        try:
+            summary = self._config.import_from(path, mode)
+        except (ValueError, OSError) as exc:
+            self._log(f"Não consegui importar: {exc}", "error")
+            QMessageBox.warning(self, "Importar configurações",
+                                f"Não consegui importar este arquivo:\n\n{exc}")
+            return
+        if mode == "replace":
+            bk = f" Cópia da configuração anterior: {summary['backup']}" if summary["backup"] else ""
+            self._log(f"Configurações importadas (substituição total, "
+                      f"{summary['sequences']} sequência(s)).{bk}", "success")
+        else:
+            self._log(f"{summary['sequences']} sequência(s) importada(s) e adicionada(s) "
+                      f"às atuais.", "success")
+        if self._on_imported:
+            self._on_imported(summary)
+        else:
+            self._load()
 
     def _export_config(self):
         from datetime import datetime

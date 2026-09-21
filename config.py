@@ -296,6 +296,112 @@ class Config:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
+    # ── importação ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def read_import(path: str) -> dict:
+        """Lê e valida um arquivo de configuração (exportado pelo app ou um
+        config.json). Retorna o dict normalizado (schema v2) SEM aplicar nada.
+        Levanta ValueError com uma mensagem clara se o arquivo não servir."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except UnicodeDecodeError:
+            raise ValueError("o arquivo não é um texto UTF-8 válido.")
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"o arquivo não é um JSON válido ({exc.msg}, linha {exc.lineno}).")
+        except OSError as exc:
+            raise ValueError(f"não consegui abrir o arquivo ({exc.strerror or exc}).")
+        if not isinstance(data, dict):
+            raise ValueError("o arquivo não parece uma configuração do AutoTrigger.")
+        try:
+            version = int(data.get("version", 1) or 1)
+        except (TypeError, ValueError):
+            version = 1
+        if version > 2:
+            raise ValueError(f"o arquivo é de uma versão mais nova do app (schema {version}); "
+                             f"atualize o AutoTrigger antes de importar.")
+        if version < 2:
+            data = _migrate_v1(data)
+        if not isinstance(data.get("sequences"), list) or not isinstance(data.get("global", {}), dict):
+            raise ValueError("o arquivo não parece uma configuração do AutoTrigger "
+                             "(faltam as sequências).")
+        seqs = []
+        for i, sq in enumerate(data["sequences"], 1):
+            if not isinstance(sq, dict):
+                raise ValueError(f"a sequência nº {i} do arquivo está inválida.")
+            sq = copy.deepcopy(sq)
+            sq.setdefault("name", f"Sequência {i}")
+            if not isinstance(sq.get("steps"), list):
+                sq["steps"] = []
+            if not sq.get("id"):
+                sq["id"] = _new_id()
+            seqs.append(sq)
+        return {"global": copy.deepcopy(data.get("global", {}) or {}), "sequences": seqs,
+                "includes_secrets": bool((data.get("_export") or {}).get("includes_secrets", True))}
+
+    def import_from(self, path: str, mode: str = "replace") -> dict:
+        """Aplica um arquivo de configuração e salva.
+
+        mode="replace": troca as configurações globais e TODAS as sequências pelas
+            do arquivo. Antes, grava uma cópia completa da configuração atual
+            (config.antes-da-importacao-<data>.json) e mantém as 5 mais recentes.
+            Senha do e-mail e token do Telegram em branco no arquivo NÃO apagam os
+            atuais.
+        mode="merge": só ACRESCENTA as sequências do arquivo (com ids novos), sem
+            tocar nas configurações globais nem nas sequências existentes.
+
+        Retorna {"mode", "sequences", "backup"}. Levanta ValueError se inválido.
+        """
+        if mode not in ("replace", "merge"):
+            raise ValueError(f"modo de importação desconhecido: {mode}")
+        incoming = self.read_import(path)
+        backup = None
+        if mode == "replace":
+            backup = self._backup_before_import()
+            cur_g = self._data.get("global", {})
+            new_g = incoming["global"]
+            for section, key in (("email", "password"), ("telegram", "bot_token")):
+                sec = new_g.setdefault(section, {})
+                if not isinstance(sec, dict):
+                    sec = new_g[section] = {}
+                if not sec.get(key):
+                    sec[key] = (cur_g.get(section) or {}).get(key, "")
+            self._data["global"] = new_g
+            self._data["sequences"] = incoming["sequences"]
+            self._ensure_global_defaults()
+        else:
+            existing_ids = {sq["id"] for sq in self._data.get("sequences", [])}
+            existing_names = {sq.get("name", "") for sq in self._data.get("sequences", [])}
+            for sq in incoming["sequences"]:
+                sq["id"] = _new_id()
+                while sq["id"] in existing_ids:
+                    sq["id"] = _new_id()
+                existing_ids.add(sq["id"])
+                if sq.get("name", "") in existing_names:
+                    sq["name"] = f"{sq['name']} (importada)"
+                existing_names.add(sq["name"])
+                self._data.setdefault("sequences", []).append(sq)
+        self.save()
+        return {"mode": mode, "sequences": len(incoming["sequences"]), "backup": backup}
+
+    def _backup_before_import(self) -> str | None:
+        """Cópia completa (com senhas) da configuração atual, ao lado do config."""
+        from datetime import datetime
+        import glob
+        folder = os.path.dirname(CONFIG_FILE)
+        path = os.path.join(folder, f"config.antes-da-importacao-{datetime.now():%Y%m%d-%H%M%S}.json")
+        try:
+            self.export_to(path, include_secrets=True)
+        except OSError:
+            return None
+        for old in sorted(glob.glob(os.path.join(folder, "config.antes-da-importacao-*.json")))[:-5]:
+            try:
+                os.remove(old)
+            except OSError:
+                pass
+        return path
+
     def get_global(self) -> dict:
         return self._data.get("global", {})
 

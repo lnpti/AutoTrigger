@@ -54,3 +54,6 @@ Desktop.ini
 
 # Cache VLC
 *.vlc
+
+# Cópias de segurança feitas antes de importar configurações
+config.antes-da-importacao-*.json

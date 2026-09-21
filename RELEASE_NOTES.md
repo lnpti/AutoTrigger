@@ -1,3 +1,23 @@
+## AutoTrigger V10 — v2.3.19
+
+### Importar configurações
+
+- Novo botão **Importar configurações…** em Configurações Globais, ao lado de
+  "Exportar configurações…". Carrega um `.json` exportado antes (ou um `config.json`)
+  e pergunta como importar:
+  - **Só adicionar as sequências** (padrão): acrescenta as do arquivo às atuais, sem
+    mexer em mais nada; nomes repetidos ganham "(importada)".
+  - **Substituir tudo:** troca as configurações globais e todas as sequências.
+    Antes, salva uma cópia completa da configuração atual
+    (`config.antes-da-importacao-<data>.json`, mantém as 5 mais recentes).
+- Senha do e-mail e token do Telegram em branco no arquivo **não apagam** os atuais.
+- Arquivo inválido (JSON quebrado, não é uma configuração, versão mais nova do app)
+  mostra uma mensagem clara e não altera nada. Arquivos de versões antigas são
+  convertidos automaticamente.
+- Depois de importar, a lista de sequências e a tela são recarregadas e o monitor
+  reinicia. Aviso na janela: dispositivos de áudio são do computador de origem e
+  talvez precisem ser escolhidos de novo em outro PC.
+
 ## AutoTrigger V10 — v2.3.18
 
 ### Diagnóstico de quedas e travamentos (permanente)
