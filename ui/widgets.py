@@ -92,6 +92,11 @@ class DragList(QWidget):
     def set_spacing(self, px: int):
         self._lay.setSpacing(px)
 
+    def set_content_margins(self, left: int, top: int, right: int, bottom: int):
+        """Folga ao redor dos cards dentro da lista (dá espaço pra sombra deles
+        não ser cortada pela borda da área de rolagem)."""
+        self._lay.setContentsMargins(left, top, right, bottom)
+
     # ── conteúdo ─────────────────────────────────────────────────────────────
 
     def add_item(self, key, widget: QWidget):

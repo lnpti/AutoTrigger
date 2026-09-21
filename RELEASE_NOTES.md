@@ -1,3 +1,13 @@
+## AutoTrigger V10 — v2.3.17
+
+- **Origem do gatilho: só "Arquivo TXT" ou "Log do player".** A opção "TXT ou log
+  do player" saiu da lista. Sequências já salvas com ela continuam funcionando
+  como antes; o item aparece como "(antigo — escolha um)" só enquanto a sequência
+  o usa, até você escolher uma das duas.
+- **Cards de sequência "suspensos":** sombra e 10 px de folga nas duas laterais,
+  sem encostar nas bordas da coluna (a margem de 4 px da v2.3.16 foi desfeita).
+  Nomes muito longos são cortados em vez de alargar o card.
+
 ## AutoTrigger V10 — v2.3.16
 
 Esta versão **volta ao comportamento da v2.3.14** (gatilhos, log do player,

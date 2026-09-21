@@ -16,10 +16,11 @@ from typing import Dict, Optional
 import applog
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QColor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QStackedWidget, QScrollArea, QSplitter,
+    QFrame, QStackedWidget, QScrollArea, QSplitter, QSizePolicy,
+    QGraphicsDropShadowEffect,
 )
 
 from version import __version__
@@ -60,6 +61,16 @@ class SequenceCard(QFrame):
         self._kw.setObjectName("dim")
         col.addWidget(self._name); col.addWidget(self._kw)
         lay.addLayout(col, 1)
+        # Textos longos não podem alargar o card além da coluna (ele ficaria
+        # encostando/cortado na lateral): cortam em vez de empurrar.
+        for lab in (self._name, self._kw):
+            lab.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        # Sombra: o card "flutua" sobre o fundo da coluna.
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(16)
+        shadow.setOffset(0, 3)
+        shadow.setColor(QColor(0, 0, 0, 190))
+        self.setGraphicsEffect(shadow)
         self._selected = False
         self._armed = True
         self._repaint()
@@ -238,10 +249,14 @@ class MainWindow(QMainWindow):
         side = QFrame(); side.setObjectName("sidebar")
         side.setMinimumWidth(220); side.setMaximumWidth(360)
         lay = QVBoxLayout(side)
-        lay.setContentsMargins(4, 12, 4, 10)
+        # Sem margem lateral no painel: título, lista e botões ganham a
+        # própria (10 px, como sempre foi). A lista precisa do espaço DENTRO
+        # da área de rolagem para a sombra dos cards não ser cortada.
+        lay.setContentsMargins(0, 12, 0, 10)
         lay.setSpacing(8)
 
         title_bar = QHBoxLayout()
+        title_bar.setContentsMargins(10, 0, 10, 0)
         title = QLabel("SEQUÊNCIAS"); title.setObjectName("section")
         title_bar.addWidget(title)
         title_bar.addStretch(1)
@@ -258,25 +273,31 @@ class MainWindow(QMainWindow):
         # sozinho quando o conteúdo passa da altura disponível.
         self._seq_list = DragList()
         self._seq_list.setObjectName("seq_list")
-        self._seq_list.set_spacing(6)
+        self._seq_list.set_spacing(8)
+        self._seq_list.set_content_margins(10, 4, 10, 12)
         self._seq_list.reordered.connect(
             lambda: QTimer.singleShot(0, self._on_sequences_reordered)
         )
         seq_scroll = QScrollArea()
         seq_scroll.setWidgetResizable(True)
         seq_scroll.setFrameShape(QFrame.NoFrame)
+        seq_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         seq_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         seq_scroll.setWidget(self._seq_list)
         lay.addWidget(seq_scroll, 1)
 
+        btns = QVBoxLayout()
+        btns.setContentsMargins(10, 0, 10, 0)
+        btns.setSpacing(8)
         new_btn = QPushButton("＋  Nova Sequência")
         new_btn.setObjectName("primary")
         new_btn.clicked.connect(self._new_sequence)
-        lay.addWidget(new_btn)
+        btns.addWidget(new_btn)
 
         cfg_btn = QPushButton("⚙  Configurações Globais")
         cfg_btn.clicked.connect(self._show_global)
-        lay.addWidget(cfg_btn)
+        btns.addWidget(cfg_btn)
+        lay.addLayout(btns)
         return side
 
     def _build_placeholder(self) -> QWidget:

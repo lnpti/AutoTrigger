@@ -67,8 +67,12 @@ class _StepRow(QFrame):
 _TRIGGER_SOURCES = [
     ("Arquivo TXT", "txt"),
     ("Log do player (nome do áudio)", "medialog"),
-    ("TXT ou log do player", "both"),
 ]
+# "Ambos" não é mais uma escolha. Sequências que JÁ foram salvas assim continuam
+# funcionando (o engine ainda entende "both"); pra não esconder esse
+# comportamento, o item aparece na lista só enquanto a sequência o usa, até a
+# pessoa escolher TXT ou Log do player.
+_LEGACY_BOTH = ("TXT e log do player (antigo — escolha um)", "both")
 
 _STATE_TEXTS = {
     "idle":      ("● Aguardando", COLORS["text_dim"]),
@@ -255,6 +259,7 @@ class SequenceDetail(QWidget):
         self._name.setText(seq.get("name", ""))
         self._kw.setText(seq.get("keyword_trigger", ""))
         self._source.blockSignals(True)
+        self._sync_legacy_source(seq.get("trigger_source", "txt"))
         idx = self._source.findData(seq.get("trigger_source", "txt"))
         self._source.setCurrentIndex(idx if idx >= 0 else 0)
         self._source.blockSignals(False)
@@ -274,6 +279,13 @@ class SequenceDetail(QWidget):
         return self._seq.get("id", "")
 
     # ── save ─────────────────────────────────────────────────────────────────────
+
+    def _sync_legacy_source(self, src: str):
+        i = self._source.findData(_LEGACY_BOTH[1])
+        if src == "both" and i < 0:
+            self._source.addItem(*_LEGACY_BOTH)
+        elif src != "both" and i >= 0:
+            self._source.removeItem(i)
 
     def _update_kw_placeholder(self):
         src = self._source.currentData()
