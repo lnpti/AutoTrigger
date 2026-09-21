@@ -13,8 +13,8 @@ import emailer
 import telegram_notifier
 from step_runner import StepRunner
 from sequence_runner import SequenceRunner, RunnerState
-from file_monitor import FileMonitor
-from timeparse import is_armed_today
+from file_monitor import FileMonitor, SOURCE_TXT, SOURCE_MEDIALOG
+from timeparse import is_armed_today, fmt_secs
 
 
 class SequenceEngine:
@@ -71,11 +71,16 @@ class SequenceEngine:
     # ── monitor control ───────────────────────────────────────────────────────
 
     def start_monitor(self) -> bool:
-        txt = self._config.get_global().get("txt_file_path", "")
-        if not txt:
-            self._log_fn("Caminho do arquivo TXT não configurado.", "error")
+        g = self._config.get_global()
+        txt = (g.get("txt_file_path", "") or "").strip()
+        ml = g.get("medialog", {}) or {}
+        folder = (ml.get("folder", "") or "").strip() if ml.get("enabled") else ""
+        if not txt and not folder:
+            self._log_fn("Configure o arquivo TXT e/ou a pasta do log do player "
+                         "(Configurações Globais).", "error")
             return False
-        ok = self._file_monitor.start(txt, log_callback=self._log_fn)
+        ok = self._file_monitor.start(txt, log_callback=self._log_fn,
+                                      medialog_folder=folder or None)
         if ok:
             self._register_all_triggers()
         return ok
@@ -85,6 +90,9 @@ class SequenceEngine:
 
     def is_monitor_running(self) -> bool:
         return self._file_monitor.is_running()
+
+    def is_medialog_running(self) -> bool:
+        return self._file_monitor.is_medialog_running()
 
     def reload_sequences(self):
         """Recarrega triggers após mudança na config. Chama após salvar configurações."""
@@ -109,19 +117,45 @@ class SequenceEngine:
                 continue
             self._register_trigger(seq)
 
+    @staticmethod
+    def _trigger_sources(seq: dict) -> list:
+        """Origens que disparam a sequência: 'txt' (padrão), 'medialog' ou ambas."""
+        src = seq.get("trigger_source", SOURCE_TXT)
+        if src == "both":
+            return [SOURCE_TXT, SOURCE_MEDIALOG]
+        return [SOURCE_MEDIALOG] if src == SOURCE_MEDIALOG else [SOURCE_TXT]
+
     def _register_trigger(self, seq: dict):
         kw = seq["keyword_trigger"].strip()
         sid = seq["id"]
-        self._file_monitor.register_keyword(
-            kw, lambda _sid=sid: self._on_trigger(_sid)
-        )
+        for source in self._trigger_sources(seq):
+            if source == SOURCE_MEDIALOG and not self._file_monitor.is_medialog_running():
+                self._log_fn(
+                    f"'{seq.get('name', sid)}' usa o log do player, mas ele não está "
+                    f"ativo (habilite e aponte a pasta em Configurações Globais).",
+                    "warn",
+                )
+            if source == SOURCE_MEDIALOG:
+                cb = lambda ctx, _sid=sid: self._on_trigger(_sid, ctx)
+            else:
+                cb = lambda _sid=sid: self._on_trigger(_sid)
+            self._file_monitor.register_keyword(kw, cb, source)
 
     # ── execution ─────────────────────────────────────────────────────────────
 
-    def _on_trigger(self, seq_id: str):
-        self.run_sequence(seq_id)
+    def _on_trigger(self, seq_id: str, ctx: dict | None = None):
+        """Gatilho detectado. `ctx` (só do log do player) traz os dados do áudio."""
+        seq = self._config.get_sequence_by_id(seq_id)
+        extra = 0.0
+        if ctx and seq and seq.get("delay_from_audio_end"):
+            extra = float(ctx.get("remaining_s", 0.0))
+            self._log_fn(
+                f"🎵 '{ctx.get('name', '')}' termina em {fmt_secs(int(round(extra)))} — "
+                f"o atraso só começa a contar depois disso.", "info")
+        self.run_sequence(seq_id, extra_delay=extra)
 
-    def run_sequence(self, seq_id: str, dry_run: bool = False, manual: bool = False):
+    def run_sequence(self, seq_id: str, dry_run: bool = False, manual: bool = False,
+                     extra_delay: float = 0.0):
         """Inicia uma sequência. manual=True ignora o gatilho do TXT (botão Rodar)."""
         runner = self._runners.get(seq_id)
         if runner and runner.state == RunnerState.RUNNING:
@@ -141,7 +175,8 @@ class SequenceEngine:
             origin = "manual" if manual else "gatilho"
             self._log_fn(f"🚀 Iniciando ({origin}): '{name}'", "success")
 
-        runner = SequenceRunner(seq, self._step_runner, self._log_fn, dry_run=dry_run)
+        runner = SequenceRunner(seq, self._step_runner, self._log_fn, dry_run=dry_run,
+                                extra_delay_seconds=extra_delay)
         runner.set_keyword_waiter(self._make_keyword_waiter())
         runner.set_callbacks(
             on_state_change=lambda s, i, _id=seq_id: self._on_state(_id, s, i),
@@ -187,9 +222,9 @@ class SequenceEngine:
                 with self._temp_kw_lock:
                     for e in self._temp_kw_events.pop(kw, []):
                         e.set()
-                self._file_monitor.unregister_keyword(kw)
+                self._file_monitor.unregister_keyword(kw, SOURCE_TXT)
 
-            self._file_monitor.register_keyword(kw, _fire)
+            self._file_monitor.register_keyword(kw, _fire, SOURCE_TXT)
             return ev
 
         return _waiter

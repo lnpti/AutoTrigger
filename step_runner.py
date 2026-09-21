@@ -15,6 +15,17 @@ import os
 
 import audio_manager as _audio
 import hotkey_sender as _hotkey
+from player import db_to_percent, percent_to_db
+
+
+def step_gain_db(step: dict) -> float:
+    """Ganho (dB) de uma etapa de stream. Etapas da v2.3.13 guardavam
+    `volume_percent`; converte se ainda não houver `gain_db`."""
+    if "gain_db" in step:
+        return float(step["gain_db"])
+    if "volume_percent" in step:
+        return round(percent_to_db(float(step["volume_percent"])), 1)
+    return 0.0
 
 
 class StepRunner:
@@ -134,8 +145,9 @@ class StepRunner:
         if not url:
             self._log("URL de stream não configurada.", "warn")
             return True
-        volume = int(step.get("volume_percent", 100))
-        gain_txt = f", ganho {volume}%" if volume != 100 else ""
+        gain_db = step_gain_db(step)
+        volume = db_to_percent(gain_db)
+        gain_txt = f", ganho {gain_db:+.1f} dB" if gain_db else ""
         self._log(f"Streaming: {label} ({duration}s{gain_txt})")
         done_ev = threading.Event()
         self._player.set_on_finished(lambda: done_ev.set())

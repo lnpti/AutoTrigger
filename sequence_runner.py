@@ -28,7 +28,11 @@ class SequenceRunner:
         step_runner: StepRunner,
         log_callback: Optional[Callable] = None,
         dry_run: bool = False,
+        extra_delay_seconds: float = 0.0,
     ):
+        # Atraso somado ao `trigger_delay_seconds` da sequência (ex.: tempo que
+        # falta pro áudio do player terminar -- ver SequenceEngine._on_trigger).
+        self._extra_delay = max(0.0, float(extra_delay_seconds))
         self._seq = seq_dict
         self._step_runner = step_runner
         self._log = log_callback or (lambda msg, level="info": print(f"[Runner] {msg}"))
@@ -109,20 +113,28 @@ class SequenceRunner:
             self._log(f"🧪 ENSAIO de '{name}' — nada será mutado/disparado de verdade.", "warn")
 
         # ── Atraso após o gatilho (delay) ──────────────────────────────────────
-        delay = int(self._seq.get("trigger_delay_seconds", 0) or 0)
+        delay = float(int(self._seq.get("trigger_delay_seconds", 0) or 0)) + self._extra_delay
         if self._dry_run:
-            delay = min(delay, 3)
+            delay = min(delay, 3.0)
         if delay > 0:
-            self._log(f"⏳ Aguardando {fmt_secs(delay)} antes de iniciar…", "info")
-            elapsed = 0.0
-            while elapsed < delay and not self._stop_event.is_set():
-                time.sleep(1.0)
-                elapsed += 1.0
-                if self._on_tick:
-                    try:
-                        self._on_tick(-1, elapsed, float(delay))
-                    except Exception:
-                        pass
+            self._log(f"⏳ Aguardando {fmt_secs(int(round(delay)))} antes de iniciar…", "info")
+            # Relógio monotônico + sono curto: termina no instante certo (o
+            # antigo sleep(1.0) errava até 1 s -- crítico quando o atraso é
+            # "até o áudio acabar"). O tick da UI continua a cada 1 s.
+            t0 = time.monotonic()
+            next_tick = 1.0
+            while not self._stop_event.is_set():
+                elapsed = time.monotonic() - t0
+                if elapsed >= delay:
+                    break
+                if elapsed >= next_tick:
+                    next_tick += 1.0
+                    if self._on_tick:
+                        try:
+                            self._on_tick(-1, min(elapsed, delay), delay)
+                        except Exception:
+                            pass
+                time.sleep(min(0.1, max(0.0, delay - elapsed)))
             if self._stop_event.is_set():
                 self._log(f"⏹ Sequência '{name}' cancelada no atraso.", "warn")
                 self._notify(RunnerState.CANCELLED, -1)

@@ -14,7 +14,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,
-    QComboBox, QPushButton, QFileDialog, QFrame, QSpinBox,
+    QComboBox, QPushButton, QFileDialog, QFrame, QDoubleSpinBox,
 )
 
 
@@ -60,6 +60,8 @@ class WindowCombo(QComboBox):
 
 import audio_manager as _audio
 import hotkey_sender as _hotkey
+from player import GAIN_DB_MIN, GAIN_DB_MAX
+from step_runner import step_gain_db
 from timeparse import parse_secs, fmt_secs
 from ui.theme import COLORS
 from ui.widgets import TimeField, hline, form_field
@@ -235,12 +237,14 @@ class StepEditor(QWidget):
             self._form.addRow(_lbl("Duração"), dur)
             vol_host = QWidget(); vol_l = QHBoxLayout(vol_host)
             vol_l.setContentsMargins(0, 0, 0, 0)
-            vol = QSpinBox()
-            vol.setRange(0, 200)
-            vol.setSuffix(" %")
+            vol = QDoubleSpinBox()
+            vol.setRange(GAIN_DB_MIN, GAIN_DB_MAX)
+            vol.setDecimals(1)
+            vol.setSingleStep(0.5)
+            vol.setSuffix(" dB")
             vol.setMaximumWidth(110)
-            vol.setValue(int(s.get("volume_percent", 100)))
-            vol_hint = QLabel("100% = normal · acima de 100% amplifica (ganho)")
+            vol.setValue(step_gain_db(s))
+            vol_hint = QLabel("0 dB = normal · máx. +6 dB (limite do VLC)")
             vol_hint.setObjectName("dim")
             vol_l.addWidget(vol); vol_l.addWidget(vol_hint); vol_l.addStretch(1)
             self._w["volume"] = vol
@@ -326,7 +330,7 @@ class StepEditor(QWidget):
         elif t == "stream":
             step["url"] = w["url"].text().strip()
             step["duration_seconds"] = w["dur"].seconds()
-            step["volume_percent"] = w["volume"].value()
+            step["gain_db"] = round(w["volume"].value(), 1)
             step["label"] = label or "Stream"
         elif t == "wait_time":
             step["seconds"] = w["secs"].seconds()

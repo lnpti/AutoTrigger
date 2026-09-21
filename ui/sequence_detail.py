@@ -17,7 +17,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit,
     QPushButton, QScrollArea, QFrame, QStackedWidget, QButtonGroup,
-    QRadioButton, QCheckBox, QSizePolicy,
+    QRadioButton, QCheckBox, QSizePolicy, QComboBox,
 )
 
 from timeparse import fmt_secs, WEEKDAY_LABELS, is_armed_today
@@ -63,6 +63,12 @@ class _StepRow(QFrame):
             f"QFrame#raised:hover {{ border:1px solid {COLORS['cyan']}; }}"
         )
 
+
+_TRIGGER_SOURCES = [
+    ("Arquivo TXT", "txt"),
+    ("Log do player (nome do áudio)", "medialog"),
+    ("TXT ou log do player", "both"),
+]
 
 _STATE_TEXTS = {
     "idle":      ("● Aguardando", COLORS["text_dim"]),
@@ -174,18 +180,35 @@ class SequenceDetail(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(14)
         grid.setVerticalSpacing(10)
-        grid.addWidget(_lbl("Keyword (TXT)"), 0, 0)
+        grid.addWidget(_lbl("Origem do gatilho"), 0, 0)
+        self._source = QComboBox()
+        for label, key in _TRIGGER_SOURCES:
+            self._source.addItem(label, key)
+        self._source.setToolTip(
+            "TXT: keyword dentro do arquivo TXT monitorado.\n"
+            "Log do player: keyword dentro do NOME do áudio que entrou em execução "
+            "no V10 Player Network (pasta de XMLs em Configurações Globais).")
+        self._source.currentIndexChanged.connect(self._on_source_changed)
+        grid.addWidget(self._source, 0, 1)
+        grid.addWidget(_lbl("Keyword"), 1, 0)
         self._kw = QLineEdit()
         self._kw.setPlaceholderText("ex: ESPORTE")
         self._kw.editingFinished.connect(self._save_fields)
-        grid.addWidget(self._kw, 0, 1)
-        grid.addWidget(_lbl("Atraso após gatilho"), 1, 0)
+        grid.addWidget(self._kw, 1, 1)
+        grid.addWidget(_lbl("Atraso após gatilho"), 2, 0)
         self._delay = TimeField(0)
         self._delay.changed.connect(self._save_fields_debounced)
-        grid.addWidget(self._delay, 1, 1)
+        grid.addWidget(self._delay, 2, 1)
+        self._audio_end = QCheckBox("Deixar o áudio terminar antes de contar o atraso")
+        self._audio_end.setToolTip(
+            "Só vale quando o gatilho vem do log do player: o disparo acontece "
+            "quando o áudio entra no ar; a sequência espera ele acabar (tempo "
+            "lido do XML) e só então conta o atraso acima e roda as etapas.")
+        self._audio_end.stateChanged.connect(lambda _=0: self._save_fields())
+        grid.addWidget(self._audio_end, 3, 1)
         self._enabled = QCheckBox("Sequência habilitada")
         self._enabled.stateChanged.connect(lambda _=0: self._save_fields())
-        grid.addWidget(self._enabled, 2, 1)
+        grid.addWidget(self._enabled, 4, 1)
         grid.setColumnStretch(1, 1)
         v.addLayout(grid)
 
@@ -231,6 +254,14 @@ class SequenceDetail(QWidget):
         self._stack.setCurrentIndex(0)
         self._name.setText(seq.get("name", ""))
         self._kw.setText(seq.get("keyword_trigger", ""))
+        self._source.blockSignals(True)
+        idx = self._source.findData(seq.get("trigger_source", "txt"))
+        self._source.setCurrentIndex(idx if idx >= 0 else 0)
+        self._source.blockSignals(False)
+        self._audio_end.blockSignals(True)
+        self._audio_end.setChecked(bool(seq.get("delay_from_audio_end", False)))
+        self._audio_end.blockSignals(False)
+        self._update_kw_placeholder()
         self._delay.set_seconds(int(seq.get("trigger_delay_seconds", 0) or 0))
         self._enabled.blockSignals(True)
         self._enabled.setChecked(seq.get("enabled", True))
@@ -244,6 +275,18 @@ class SequenceDetail(QWidget):
 
     # ── save ─────────────────────────────────────────────────────────────────────
 
+    def _update_kw_placeholder(self):
+        src = self._source.currentData()
+        self._audio_end.setEnabled(src in ("medialog", "both"))
+        self._kw.setPlaceholderText(
+            "ex: ESPORTE" if src == "txt"
+            else "ex: SPOT-L21 (parte do nome do arquivo de áudio)" if src == "medialog"
+            else "ex: ESPORTE (TXT) ou parte do nome do áudio")
+
+    def _on_source_changed(self, _=0):
+        self._update_kw_placeholder()
+        self._save_fields()
+
     def _save_fields_debounced(self):
         # TimeField emite muito; salva direto (barato o suficiente)
         self._save_fields()
@@ -253,6 +296,8 @@ class SequenceDetail(QWidget):
             return
         self._seq["name"] = self._name.text().strip() or "Sequência"
         self._seq["keyword_trigger"] = self._kw.text().strip().upper()
+        self._seq["trigger_source"] = self._source.currentData() or "txt"
+        self._seq["delay_from_audio_end"] = self._audio_end.isChecked()
         self._seq["trigger_delay_seconds"] = self._delay.seconds()
         self._seq["enabled"] = self._enabled.isChecked()
         self._seq["schedule"] = self._sched.value()
@@ -601,8 +646,9 @@ def _summary(step: dict) -> str:
     if t == "play_audio":
         return os.path.basename(step.get("file", ""))[:34]
     if t == "stream":
-        vol = int(step.get("volume_percent", 100))
-        gain = f" · {vol}%" if vol != 100 else ""
+        from step_runner import step_gain_db
+        db = step_gain_db(step)
+        gain = f" · {db:+.1f} dB" if db else ""
         return f"{step.get('url','')[:22]} · {fmt_secs(step.get('duration_seconds',0))}{gain}"
     if t == "wait_time":
         return fmt_secs(step.get("seconds", 0))

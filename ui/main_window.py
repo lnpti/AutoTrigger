@@ -441,6 +441,11 @@ class MainWindow(QMainWindow):
 
     def _on_global_saved(self):
         self.on_log("Configurações globais salvas.", "success")
+        if self._engine.is_monitor_running():
+            # Aplica caminhos novos (TXT / pasta do log do player) sem precisar
+            # parar e iniciar o monitor na mão.
+            self._engine.stop_monitor()
+            self._do_start_monitor()
         self._engine.reload_sequences()
         self._apply_output_device()
         self._refresh_armed()
@@ -456,7 +461,9 @@ class MainWindow(QMainWindow):
                 pass
 
     def _auto_start_monitor(self):
-        if self._config.get_global().get("txt_file_path", ""):
+        g = self._config.get_global()
+        ml = g.get("medialog", {}) or {}
+        if g.get("txt_file_path", "") or ml.get("enabled"):
             self._do_start_monitor()
 
     def _toggle_monitor(self):
@@ -478,10 +485,22 @@ class MainWindow(QMainWindow):
             self._monitor_btn.setObjectName("danger")
             self._monitor_dot.set_state("running")
             self._monitor_lbl.setText("Monitor ativo")
-            self.on_log(f"Monitor ativo: {self._config.get_global().get('txt_file_path','')}",
-                        "success")
+            g = self._config.get_global()
+            ml = g.get("medialog", {}) or {}
+            fontes = []
+            if g.get("txt_file_path", ""):
+                fontes.append(f"TXT {g['txt_file_path']}")
+            if ml.get("enabled") and self._engine.is_medialog_running():
+                fontes.append(f"log do player {ml.get('folder', '')}")
+            self.on_log(f"Monitor ativo: {' · '.join(fontes)}", "success")
         else:
-            self.on_log("Falha ao iniciar monitor. Verifique o caminho do TXT.", "error")
+            self.on_log("Falha ao iniciar monitor. Verifique o caminho do TXT e/ou a "
+                        "pasta do log do player.", "error")
+            self._monitor_btn.setText("▶  Iniciar Monitor")
+            self._monitor_btn.setObjectName("success")
+            self._monitor_btn.setStyleSheet("")
+            self._monitor_dot.set_state("error")
+            self._monitor_lbl.setText("Monitor parado")
         self._restyle(self._monitor_btn)
 
     @staticmethod

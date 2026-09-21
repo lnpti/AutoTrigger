@@ -254,7 +254,19 @@ def main():
         lambda: (window.showNormal(), window.raise_(), window.activateWindow())
     )
 
-    window.show()
+    # "Iniciar minimizado na bandeja": não mostra a janela, só o ícone. Sem
+    # bandeja disponível o app ficaria invisível e sem como abrir -- nesse caso
+    # mostra a janela normalmente.
+    if (config.get_global().get("start_minimized")
+            and QSystemTrayIcon.isSystemTrayAvailable()):
+        tray.showMessage(
+            "AutoTrigger V10",
+            "Rodando na bandeja. Clique no ícone para abrir a janela.",
+            QSystemTrayIcon.Information,
+            4000,
+        )
+    else:
+        window.show()
     sys.exit(app.exec())
 
 

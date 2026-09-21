@@ -1,3 +1,33 @@
+## AutoTrigger V10 — v2.3.14
+
+### Disparo pelo log do player (V10 Player Network)
+
+- Nova origem de gatilho: o app lê os XMLs temporários que o player cria a cada
+  áudio em execução e dispara as sequências pelo **nome do arquivo de áudio**.
+  Configure em Configurações Globais → "Log do player" (pasta dos XMLs) e, em
+  cada sequência, escolha a "Origem do gatilho": TXT, Log do player ou ambos.
+- **Deixar o áudio terminar antes de contar o atraso:** a sequência dispara
+  quando o áudio entra, espera ele acabar (tempo lido do XML) e só então conta
+  o atraso e roda as etapas.
+- O atraso das sequências agora usa relógio preciso (antes podia errar até 1 s).
+
+### Ganho de volume no streaming
+
+- A etapa de Streaming ganhou **Ganho de volume em dB** (-40 a +6 dB; 0 dB =
+  normal; +6 dB é o máximo que o VLC amplifica).
+
+### Telegram
+
+- **Vários contatos**, cada um com nome, chat_id, botão de teste e opção de
+  pausar. O log mostra quem recebeu ou falhou.
+- **O chat_id funciona com ou sem o "-"**: se o Telegram recusar, o app tenta
+  as outras formas (grupo `-ID`, supergrupo `-100ID`) e lembra a que funcionou.
+
+### Inicialização
+
+- Novas opções em Configurações Globais: **Iniciar com o Windows** e
+  **Iniciar minimizado na bandeja**.
+
 ## AutoTrigger V10 — v2.3.13
 
 ### Alertas por Telegram para vários contatos

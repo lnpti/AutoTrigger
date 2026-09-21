@@ -15,7 +15,9 @@ from PySide6.QtWidgets import (
 
 import audio_manager as _audio
 import emailer
+import startup
 import telegram_notifier
+from config import DEFAULT_MEDIALOG
 from ui.theme import COLORS
 from ui.widgets import hline, LabeledRow
 
@@ -44,6 +46,23 @@ class GlobalSettings(QWidget):
         root.addWidget(title)
         root.addWidget(hline())
 
+        # ── Inicialização ─────────────────────────────────────────────────────
+        sec_boot = QLabel("INICIALIZAÇÃO")
+        sec_boot.setObjectName("section")
+        root.addWidget(sec_boot)
+        self._boot_windows = QCheckBox("Iniciar com o Windows")
+        self._boot_windows.setToolTip(
+            "Abre o AutoTrigger sozinho quando você entra no Windows (só para "
+            "o seu usuário, não precisa de administrador).")
+        self._boot_windows.setEnabled(startup.is_supported())
+        self._boot_min = QCheckBox("Iniciar minimizado na bandeja")
+        self._boot_min.setToolTip(
+            "Ao abrir, o app vai direto para o ícone da bandeja, sem mostrar a "
+            "janela. Clique no ícone (ou reabra o atalho) para ver a janela.")
+        root.addWidget(self._boot_windows)
+        root.addWidget(self._boot_min)
+        root.addSpacing(6)
+
         # TXT
         txt_host = QWidget(); txt_l = QHBoxLayout(txt_host)
         txt_l.setContentsMargins(0, 0, 0, 0)
@@ -52,6 +71,26 @@ class GlobalSettings(QWidget):
         browse.clicked.connect(self._browse_txt)
         txt_l.addWidget(self._txt, 1); txt_l.addWidget(browse)
         root.addWidget(LabeledRow("Arquivo TXT", txt_host, label_w=120))
+
+        # ── Log do player (XMLs do V10 Player Network) ────────────────────────
+        root.addSpacing(6)
+        sec_ml = QLabel("LOG DO PLAYER (V10 PLAYER NETWORK)")
+        sec_ml.setObjectName("section")
+        root.addWidget(sec_ml)
+        self._ml_enabled = QCheckBox("Disparar sequências pelos áudios executados no player")
+        root.addWidget(self._ml_enabled)
+        ml_host = QWidget(); ml_l = QHBoxLayout(ml_host)
+        ml_l.setContentsMargins(0, 0, 0, 0)
+        self._ml_folder = QLineEdit()
+        self._ml_folder.setPlaceholderText(DEFAULT_MEDIALOG["folder"])
+        ml_browse = QPushButton("📁"); ml_browse.setObjectName("icon")
+        ml_browse.clicked.connect(self._browse_medialog)
+        ml_l.addWidget(self._ml_folder, 1); ml_l.addWidget(ml_browse)
+        root.addWidget(LabeledRow("Pasta dos XMLs", ml_host, label_w=120))
+        root.addWidget(_lbl_section(
+            "O player cria um XML temporário por áudio em execução. O AutoTrigger lê o "
+            "nome do arquivo de áudio e dispara as sequências cuja keyword estiver "
+            "contida nele (escolha a origem \"Log do player\" na sequência)."))
 
         sec = QLabel("DISPOSITIVOS PADRÃO")
         sec.setObjectName("section")
@@ -176,6 +215,12 @@ class GlobalSettings(QWidget):
     def _load(self):
         g = self._config.get_global()
         self._txt.setText(g.get("txt_file_path", ""))
+        # "Iniciar com o Windows" reflete o REGISTRO (o instalador também mexe nele).
+        self._boot_windows.setChecked(startup.is_enabled())
+        self._boot_min.setChecked(bool(g.get("start_minimized", False)))
+        ml = g.get("medialog", {}) or {}
+        self._ml_enabled.setChecked(bool(ml.get("enabled", False)))
+        self._ml_folder.setText(ml.get("folder", DEFAULT_MEDIALOG["folder"]))
         self._load_devices()
         self._load_email(g.get("email", {}) or {})
         self._load_telegram(g.get("telegram", {}) or {})
@@ -325,6 +370,13 @@ class GlobalSettings(QWidget):
                 combo.setCurrentIndex(i)
                 break
 
+    def _browse_medialog(self):
+        path = QFileDialog.getExistingDirectory(
+            self, "Selecionar pasta de log do player",
+            self._ml_folder.text().strip() or "")
+        if path:
+            self._ml_folder.setText(path)
+
     def _browse_txt(self):
         path, _ = QFileDialog.getOpenFileName(
             self, "Selecionar arquivo TXT", "",
@@ -336,6 +388,16 @@ class GlobalSettings(QWidget):
     def _save(self):
         g = self._config.get_global()
         g["txt_file_path"] = self._txt.text().strip()
+        g["start_minimized"] = self._boot_min.isChecked()
+        if startup.is_supported():
+            want = self._boot_windows.isChecked()
+            # Ligado: regrava sempre (corrige o caminho se o app mudou de pasta).
+            if (want or startup.is_enabled()) and not startup.set_enabled(want):
+                self._log("Não consegui alterar a inicialização com o Windows.", "warn")
+        g["medialog"] = {
+            "enabled": self._ml_enabled.isChecked(),
+            "folder": self._ml_folder.text().strip() or DEFAULT_MEDIALOG["folder"],
+        }
         for d in self._inputs:
             if d["name"] == self._in_combo.currentText():
                 g["default_input_device_id"] = d["id"]
@@ -375,7 +437,7 @@ class _TgContactRow(QWidget):
         self._name = QLineEdit(contact.get("name", ""))
         self._name.setPlaceholderText("nome (ex.: João — plantão)")
         self._chat = QLineEdit(str(contact.get("chat_id", "")))
-        self._chat.setPlaceholderText("chat_id")
+        self._chat.setPlaceholderText("chat_id (com ou sem '-')")
 
         test = QPushButton("📨"); test.setObjectName("icon")
         test.setToolTip("Enviar mensagem de teste só para este contato")

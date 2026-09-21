@@ -13,6 +13,21 @@ try:
 except Exception:
     VLC_AVAILABLE = False
 
+GAIN_DB_MIN = -40.0
+GAIN_DB_MAX = 6.0   # o VLC amplifica no máximo 200% de amplitude = +6,02 dB
+
+
+def db_to_percent(db: float) -> int:
+    """Ganho em dB -> volume do VLC em % (0 dB = 100; +6 dB ~ 200)."""
+    return max(0, min(200, round(100 * 10 ** (float(db) / 20))))
+
+
+def percent_to_db(percent: float) -> float:
+    """Inverso de db_to_percent (usado p/ migrar etapas salvas em %)."""
+    import math
+    return 20 * math.log10(percent / 100) if percent > 0 else GAIN_DB_MIN
+
+
 # Extensões de playlist que precisam de MediaListPlayer
 _PLAYLIST_EXTS = (".m3u", ".m3u8", ".pls", ".xspf", ".asx")
 

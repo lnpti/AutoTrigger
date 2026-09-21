@@ -98,7 +98,14 @@ DEFAULT_TELEGRAM = {
     },
 }
 
+DEFAULT_MEDIALOG = {
+    "enabled": False,
+    # Pasta onde o V10 Player Network cria um XML temporário por áudio executado.
+    "folder": r"C:\KL AV Systems\V10 Player Network\V10MediaLog",
+}
+
 DEFAULT_GLOBAL = {
+    "start_minimized": False,   # abre direto na bandeja, sem mostrar a janela
     "txt_file_path": "",
     "default_input_device_id": "",
     "default_input_device_name": "",
@@ -106,6 +113,7 @@ DEFAULT_GLOBAL = {
     "default_output_device_name": "",
     "email": copy.deepcopy(DEFAULT_EMAIL),
     "telegram": copy.deepcopy(DEFAULT_TELEGRAM),
+    "medialog": copy.deepcopy(DEFAULT_MEDIALOG),
 }
 
 
@@ -201,6 +209,9 @@ class Config:
         for key, default in DEFAULT_GLOBAL.items():
             if key not in g:
                 g[key] = copy.deepcopy(default)
+        medialog = g.setdefault("medialog", copy.deepcopy(DEFAULT_MEDIALOG))
+        for key, default in DEFAULT_MEDIALOG.items():
+            medialog.setdefault(key, default)
         # Migra o Telegram antigo (um único chat_id) para a lista de contatos.
         tg_old = g.get("telegram")
         if isinstance(tg_old, dict) and "chat_id" in tg_old:
@@ -324,6 +335,10 @@ class Config:
             "id": _new_id(),
             "name": "Nova Sequência",
             "keyword_trigger": "",
+            "trigger_source": "txt",  # "txt" | "medialog" | "both"
+            # True: com gatilho do log do player, espera o áudio terminar e só
+            # então conta o atraso fixo.
+            "delay_from_audio_end": False,
             "enabled": True,
             "trigger_delay_seconds": 0,
             "schedule": {"mode": "always", "weekdays": [], "dates": []},
