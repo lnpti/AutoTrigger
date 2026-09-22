@@ -169,6 +169,18 @@ if exist "dist\AutoTriggerV10_Setup_v%APP_VERSION%.exe" (
     echo Instalador adicionado ao release.
 )
 
+REM -- Publicar espelho Cloudflare R2 (reserva p/ quando o GitHub estiver ---
+REM    bloqueado na rede -- ver updater.py/publish_r2.py). So roda se as
+REM    credenciais estiverem no ambiente; senao, pula sem quebrar o build.
+echo.
+echo Publicando espelho Cloudflare R2...
+if "%R2_ACCESS_KEY_ID%"=="" (
+    echo AVISO: R2_ACCESS_KEY_ID nao definida no ambiente. Pulando espelho Cloudflare.
+    goto :done
+)
+%PY% publish_r2.py
+if %ERRORLEVEL% NEQ 0 echo AVISO: falha ao publicar no Cloudflare R2 ^(GitHub ja publicado normalmente^).
+
 :done
 echo.
 echo ============================================

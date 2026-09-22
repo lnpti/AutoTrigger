@@ -1,13 +1,17 @@
 """
-Auto-updater via GitHub Releases.
+Auto-updater via GitHub Releases, com espelho Cloudflare R2 como reserva.
 
 Fluxo:
   1. Consulta https://api.github.com/repos/{owner}/{repo}/releases/latest
-  2. Compara tag_name com __version__ atual
-  3. Se mais recente: baixa o asset .exe para pasta temporária
-  4. Escreve update.bat que espera o processo atual fechar,
+  2. Se o GitHub estiver inacessível (bloqueio de rede -- foi o caso do PC do
+     estúdio), tenta o espelho público no Cloudflare R2 (CLOUDFLARE_UPDATE_URL
+     em version.py), um domínio diferente que costuma passar por bloqueios
+     que pegam api.github.com/github.com.
+  3. Compara a versão obtida com __version__ atual
+  4. Se mais recente: baixa o .exe (da fonte que respondeu) para pasta temporária
+  5. Escreve update.bat que espera o processo atual fechar,
      substitui o .exe e reinicia o app
-  5. Executa update.bat e encerra o processo atual
+  6. Executa update.bat e encerra o processo atual
 
 Uso:
     from updater import Updater
@@ -28,7 +32,7 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
-from version import __version__, GITHUB_REPO, GITHUB_ASSET_NAME
+from version import __version__, GITHUB_REPO, GITHUB_ASSET_NAME, CLOUDFLARE_UPDATE_URL
 
 _API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 _HEADERS = {
@@ -95,7 +99,26 @@ class Updater:
 
         def _task():
             try:
-                info = self._fetch_latest()
+                info = None
+                gh_error = None
+                try:
+                    info = self._fetch_latest()
+                except Exception as exc:
+                    gh_error = exc
+                    self._log(f"GitHub indisponível ({exc}); tentando espelho Cloudflare...", "warn")
+
+                if info is None and gh_error is not None:
+                    try:
+                        info = self._fetch_latest_r2()
+                    except Exception as exc_r2:
+                        msg = f"Erro ao verificar atualizações (GitHub e Cloudflare indisponíveis): {exc_r2}"
+                        self._log(msg, "warn")
+                        if on_error:
+                            on_error(msg)
+                        return
+                    if info is not None:
+                        self._log("Verificação de atualização via espelho Cloudflare.", "info")
+
                 if info is None:
                     # sem asset compatível
                     if on_up_to_date:
@@ -280,3 +303,24 @@ del "%~f0"
                 )
 
         return None
+
+    def _fetch_latest_r2(self) -> Optional[UpdateInfo]:
+        """Consulta o manifesto público no espelho Cloudflare R2 e retorna
+        UpdateInfo ou None. Só é chamado quando o GitHub falhou -- é reserva,
+        não fonte primária (as versões são publicadas nos dois de qualquer
+        forma, ver publish_r2.py)."""
+        resp = requests.get(CLOUDFLARE_UPDATE_URL, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        version = str(data.get("version", "")).strip()
+        exe_url = data.get("exe_url", "")
+        if not version or not exe_url:
+            return None
+
+        return UpdateInfo(
+            tag=f"v{version}",
+            notes=data.get("notes", ""),
+            download_url=exe_url,
+            size=data.get("size", 0),
+        )

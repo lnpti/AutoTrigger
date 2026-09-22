@@ -1,3 +1,14 @@
+## AutoTrigger V10 — v2.3.20
+
+### Espelho de atualização no Cloudflare
+
+- O app agora também consegue se atualizar pelo Cloudflare, além do GitHub —
+  útil quando a rede do estúdio bloqueia o GitHub (era o caso relatado):
+  se a checagem no GitHub falhar, o app tenta automaticamente um endereço
+  Cloudflare alternativo, sem precisar mexer em nada na configuração.
+- Continua tudo automático: se o GitHub responder normalmente, é ele que é
+  usado (o Cloudflare é só reserva).
+
 ## AutoTrigger V10 — v2.3.19
 
 ### Importar configurações
