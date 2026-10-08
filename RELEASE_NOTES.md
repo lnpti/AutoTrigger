@@ -1,3 +1,27 @@
+## AutoTrigger V10 — v2.3.23
+
+### Atualização automática sem o erro "Failed to load Python DLL"
+
+- Corrige o erro `Failed to load Python DLL ... python313.dll` que aparecia ao
+  reabrir o app depois de atualizar. Não era antivírus: o `.exe` novo herdava o
+  ambiente do PyInstaller e reaproveitava a pasta temporária do app antigo, que é
+  apagada quando ele fecha. O atualizador agora manda o app novo extrair a
+  própria pasta.
+- A troca do `.exe` também era tentada uma vez só: se o antigo ainda estivesse
+  preso por um instante, a atualização era abandonada em silêncio. Agora tenta
+  por até ~40 s.
+- A correção vale para o app que faz a atualização: quem atualizar a partir da
+  v2.3.22 ou anterior ainda pode ver o erro uma última vez (basta abrir o app de
+  novo; o `.exe` novo já está instalado). As atualizações seguintes saem limpas.
+
+### Vigia de stream mudo mais robusto
+
+- Procura a sessão de áudio do app em todas as saídas, não só na selecionada, e
+  não deixa uma sessão ilegível de outro programa interromper a busca.
+- O log informa em qual placa o áudio está saindo. Se estiver saindo em outra
+  que não a selecionada, avisa e tenta mover para a selecionada.
+- Quando não consegue medir o áudio, o aviso agora traz o motivo.
+
 ## AutoTrigger V10 — v2.3.22
 
 ### Mute com a placa certa

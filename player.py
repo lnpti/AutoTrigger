@@ -59,6 +59,7 @@ class AudioPlayer:
         self._output_device_id = ""   # ID MMDevice Windows do dispositivo de saída
         self._output_device_name = ""
         self._warned_output = None    # evita repetir o aviso de saída a cada play
+        self._current_out_id = ""     # saída realmente pedida ao VLC no último play
         self._silence_limit = STREAM_SILENCE_SECONDS
         self._stall_limit = STREAM_STALL_SECONDS
         self._volume = 100            # % (0-200; acima de 100 = ganho/amplificação do VLC)
@@ -207,6 +208,7 @@ class AudioPlayer:
             # Isso evita que o VLC abra o device padrão e depois mude,
             # o que causaria áudio duplicado na transição.
             out_id = self._effective_output_id()
+            self._current_out_id = out_id
             if out_id:
                 try:
                     self._player.audio_output_set("mmdevice")
@@ -324,6 +326,8 @@ class AudioPlayer:
         grace_left = STREAM_RESTART_GRACE_SECONDS
         measured_ok = False       # o medidor já deu leitura real neste stream
         unverified_warned = False
+        location_logged = None    # ID da saída onde o áudio foi visto (p/ logar 1x)
+        redirects = 0             # tentativas de mover o áudio p/ a saída selecionada
         silence_restarts = 0
         meter = None
         try:
@@ -353,6 +357,32 @@ class AudioPlayer:
                     level = meter.peak() if meter is not None else None
                     if level is not None:
                         measured_ok = True
+                        loc = meter.location
+                        if loc and loc[0] != location_logged:
+                            location_logged = loc[0]
+                            expected = self._current_out_id
+                            if expected and loc[0] != expected:
+                                shown = self._output_device_name or expected
+                                if redirects < 2:
+                                    redirects += 1
+                                    self._log(f"⚠ O áudio do stream está saindo em '{loc[1]}', "
+                                              f"não na saída selecionada '{shown}' — movendo "
+                                              f"para a selecionada (tentativa {redirects}).", "warn")
+                                    try:
+                                        self._player.audio_output_device_set(None, expected)
+                                    except Exception as exc:
+                                        self._log(f"Não consegui mover a saída: {exc}", "warn")
+                                    meter.reset()
+                                    location_logged = None
+                                else:
+                                    self._log(f"⚠ O áudio continua saindo em '{loc[1]}', não em "
+                                              f"'{shown}'. Confira a saída em Configurações Globais.",
+                                              "warn")
+                            elif expected and redirects:
+                                self._log(f"✓ Áudio agora sai na saída selecionada ('{loc[1]}').",
+                                          "success")
+                            else:
+                                self._log(f"Vigia de áudio ativo — saída em uso: '{loc[1]}'.", "info")
                         if level > AUDIBLE_PEAK:
                             silent_for = 0.0
                             if silence_restarts:
@@ -376,9 +406,11 @@ class AudioPlayer:
                         unverified_for += step
                         if meter is not None and unverified_for >= 20.0 and not unverified_warned:
                             unverified_warned = True
+                            why = (meter.last_problem if meter else "") or "sem detalhe"
                             self._log("Não consegui medir o nível do áudio — o vigia de "
                                       "stream mudo fica inativo nesta reprodução "
-                                      "(queda e travamento continuam vigiados).", "warn")
+                                      "(queda e travamento continuam vigiados). "
+                                      f"Motivo: {why}", "warn")
                     if silent_for >= limit:
                         reason = ("silence", f"mudo há {int(silent_for)}s")
                 else:

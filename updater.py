@@ -207,6 +207,12 @@ class Updater:
         exe_name = os.path.basename(exe_path)
 
         bat_content = f"""@echo off
+REM O .exe novo e relancado a partir de um processo do PyInstaller (onefile).
+REM Sem isto ele herda as variaveis _PYI_* do app antigo, reaproveita a pasta
+REM temporaria _MEIxxxx dele -- que e apagada quando o antigo fecha -- e abre
+REM com "Failed to load Python DLL ... python313.dll". Esta variavel (exigida
+REM pelo PyInstaller 6.9+) manda o novo processo extrair a propria pasta.
+set PYINSTALLER_RESET_ENVIRONMENT=1
 REM "timeout" precisa de um console interativo de verdade -- falha
 REM silenciosamente ("input redirection not supported") quando rodado sem
 REM janela/stdin real, que e exatamente como este .bat roda (subprocess
@@ -218,8 +224,18 @@ if not errorlevel 1 (
     ping -n 2 127.0.0.1 >NUL
     goto wait
 )
-move /Y "{new_exe}" "{exe_path}"
+REM Logo depois que o app fecha, o processo-pai do PyInstaller ainda segura o
+REM .exe antigo por um instante (limpando a pasta temporaria): o move falha. Tenta
+REM de novo ate o arquivo ser liberado, em vez de desistir na primeira falha.
+set MOVED=0
+:retry_move
+move /Y "{new_exe}" "{exe_path}" >NUL 2>&1
 if errorlevel 1 (
+    if %MOVED% LSS 40 (
+        ping -n 2 127.0.0.1 >NUL
+        set /a MOVED+=1
+        goto retry_move
+    )
     exit /b 1
 )
 REM Espera o .exe recem-substituido ficar livre antes de reabrir. Um
