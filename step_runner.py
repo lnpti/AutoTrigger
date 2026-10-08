@@ -88,7 +88,7 @@ class StepRunner:
             self._log(f"[ENSAIO] {action}: {name} (sem efeito real)", "warn")
             return True
         self._log(f"{action}: {name}")
-        _audio.set_device_mute(device_id, mute)
+        _audio.set_device_mute(device_id, mute, step.get("device_name", ""))
         return True  # continua mesmo em falha de mute
 
     def _do_hotkey(self, step: dict, dry_run: bool = False) -> bool:

@@ -297,9 +297,9 @@ class SequenceEngine:
         ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
         if kind == "dropped":
-            subject = f"⚠ Stream caiu: {name}"
-            body = (f"O stream da sequência '{name}' caiu em {ts} ({detail}). "
-                    f"O app está tentando reconectar automaticamente.")
+            subject = f"⚠ Problema no stream: {name}"
+            body = (f"O stream da sequência '{name}' parou de funcionar em {ts} ({detail}). "
+                    f"O app está reiniciando automaticamente (stop + play).")
         elif kind == "recovered":
             subject = f"✓ Stream reconectado: {name}"
             body = f"O stream da sequência '{name}' foi reconectado em {ts} ({detail})."

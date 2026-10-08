@@ -83,9 +83,51 @@ def list_output_devices() -> list:
     return _enumerate_devices(EDataFlow.eRender)
 
 
-def set_device_mute(device_id: str, mute: bool) -> bool:
+def find_device_by_name(name: str, kind: str | None = None) -> dict | None:
+    """Dispositivo ATIVO com esse nome amigável, ou None.
+
+    O ID do Windows muda quando o driver é reinstalado, a placa USB troca de
+    porta ou a configuração vem de outro PC; o nome continua o mesmo.
+    kind: "capture" (entradas), "render" (saídas) ou None (procura nas duas).
     """
-    Muta ou desmuta um dispositivo pelo seu Windows MMDevice ID.
+    if not name or not name.strip():
+        return None
+    flows = {"capture": [EDataFlow.eCapture], "render": [EDataFlow.eRender]}.get(
+        kind, [EDataFlow.eCapture, EDataFlow.eRender])
+    candidates = [d for fl in flows for d in _enumerate_devices(fl)]
+    for d in candidates:
+        if d["name"] == name:
+            return d
+    wanted = name.strip().casefold()
+    for d in candidates:
+        if d["name"].strip().casefold() == wanted:
+            return d
+    return None
+
+
+def kind_from_id(device_id: str) -> str | None:
+    """"capture"/"render" pelo prefixo do ID do Windows ({0.0.1.…} = entrada,
+    {0.0.0.…} = saída); None se não reconhecer."""
+    if device_id.startswith("{0.0.1."):
+        return "capture"
+    if device_id.startswith("{0.0.0."):
+        return "render"
+    return None
+
+
+def _endpoint_volume(device_id: str):
+    enumerator = AudioUtilities.GetDeviceEnumerator()
+    imm_device = enumerator.GetDevice(device_id)
+    interface = imm_device.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+    return cast(interface, POINTER(IAudioEndpointVolume))
+
+
+def set_device_mute(device_id: str, mute: bool, device_name: str = "") -> bool:
+    """
+    Muta ou desmuta um dispositivo. O NOME é a referência principal (o ID do
+    Windows muda com driver/porta USB/outro PC): se `device_name` for dado e
+    houver um dispositivo ativo com ele, usa o ID atual desse dispositivo; senão
+    usa o `device_id` salvo.
     Retorna True se bem-sucedido.
     """
     if not device_id:
@@ -96,10 +138,12 @@ def set_device_mute(device_id: str, mute: bool) -> bool:
     _ensure_com()
     try:
         applog.trace(f"{acao}: obtendo dispositivo ...")
-        enumerator = AudioUtilities.GetDeviceEnumerator()
-        imm_device = enumerator.GetDevice(device_id)
-        interface = imm_device.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-        volume = cast(interface, POINTER(IAudioEndpointVolume))
+        alt = find_device_by_name(device_name, kind_from_id(device_id)) if device_name else None
+        if alt and alt["id"] != device_id:
+            _log(f"O ID de '{device_name}' mudou neste PC; usando o ID atual "
+                 f"(encontrado pelo nome).", "warn")
+            device_id = alt["id"]
+        volume = _endpoint_volume(device_id)
         applog.trace(f"{acao}: SetMute ...")
         volume.SetMute(1 if mute else 0, None)
         applog.trace(f"{acao}: concluído")
@@ -110,8 +154,9 @@ def set_device_mute(device_id: str, mute: bool) -> bool:
                 _muted_by_app.discard(device_id)
         return True
     except Exception as exc:
-        action = "mutar" if mute else "desmutar"
-        _log(f"Erro ao {action} dispositivo '{device_id}': {exc}", "error")
+        hint = (f" — '{device_name}' não está ativo neste PC (placa conectada? "
+                f"driver instalado?)" if device_name else "")
+        _log(f"Erro ao {acao} dispositivo '{device_id}': {exc}{hint}", "error")
         return False
 
 

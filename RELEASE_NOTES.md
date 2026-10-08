@@ -1,3 +1,25 @@
+## AutoTrigger V10 — v2.3.21
+
+### Placas de áudio achadas pelo nome
+
+- Corrige o áudio que não saía na placa escolhida em Configurações Globais e o
+  erro "Elemento não encontrado" ao mutar. O Windows troca o ID da placa ao
+  reinstalar o driver, trocar a porta USB ou usar a configuração de outro PC;
+  o app guardava só o ID. Agora **procura a placa pelo nome primeiro** e usa o
+  ID salvo só se o nome não for achado. Vale para mute/unmute e para a saída
+  do player. O log avisa quando o ID mudou ou quando a placa não está ativa.
+- Configurações Globais não mostra mais a primeira placa da lista como se fosse
+  a escolhida: se a salva não existe neste PC, aparece "⚠ nome (não encontrado)".
+
+### Stream que fica mudo é reiniciado
+
+- Se o stream ficar **10 segundos mudo**, o app faz stop + play e repete até o
+  som voltar (a cada ~15 s). Também reinicia se o stream travar sem entrar em
+  "Playing" por 25 s (a queda do VLC já era tratada).
+- Alerta por e-mail/Telegram uma vez quando o problema começa (com o motivo) e
+  outra quando o som volta. Se o app não conseguir medir o áudio numa reprodução,
+  o vigia de mudo fica inativo e o log avisa.
+
 ## AutoTrigger V10 — v2.3.20
 
 ### Espelho de atualização no Cloudflare

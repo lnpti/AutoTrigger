@@ -380,18 +380,30 @@ class GlobalSettings(QWidget):
         self._outputs = _DEV_CACHE["outputs"] or []
 
         g = self._config.get_global()
-        self._fill_combo(self._in_combo, self._inputs, g.get("default_input_device_id", ""))
-        self._fill_combo(self._out_combo, self._outputs, g.get("default_output_device_id", ""))
+        self._fill_combo(self._in_combo, self._inputs, g.get("default_input_device_id", ""),
+                         g.get("default_input_device_name", ""))
+        self._fill_combo(self._out_combo, self._outputs, g.get("default_output_device_id", ""),
+                         g.get("default_output_device_name", ""))
 
     @staticmethod
-    def _fill_combo(combo: QComboBox, devices: list, cur_id: str):
+    def _fill_combo(combo: QComboBox, devices: list, cur_id: str, cur_name: str = ""):
         combo.clear()
         names = [d["name"] for d in devices] or ["(nenhum)"]
         combo.addItems(names)
+        for i, d in enumerate(devices):  # nome primeiro: o ID muda, o nome não
+            if cur_name and d["name"] == cur_name:
+                combo.setCurrentIndex(i)
+                return
         for i, d in enumerate(devices):
             if d["id"] == cur_id:
                 combo.setCurrentIndex(i)
-                break
+                return
+        if cur_id or cur_name:
+            # Salvo, mas ausente neste PC: mostra isso em vez de fingir que o
+            # primeiro da lista é o escolhido. O item não casa com nenhum
+            # dispositivo no _save, então a configuração salva é preservada.
+            combo.insertItem(0, f"⚠ {cur_name or cur_id} (não encontrado)")
+            combo.setCurrentIndex(0)
 
     def _ask_import_mode(self, n_seq: int) -> str | None:
         """Pergunta como importar. Retorna "replace", "merge" ou None (cancelou)."""

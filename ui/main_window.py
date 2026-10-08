@@ -488,10 +488,12 @@ class MainWindow(QMainWindow):
     # ── monitor ──────────────────────────────────────────────────────────────────
 
     def _apply_output_device(self):
-        dev = self._config.get_global().get("default_output_device_id", "")
-        if dev:
+        g = self._config.get_global()
+        dev = g.get("default_output_device_id", "")
+        name = g.get("default_output_device_name", "")
+        if dev or name:
             try:
-                self._player.set_output_device(dev)
+                self._player.set_output_device(dev, name)
             except Exception:
                 pass
 
