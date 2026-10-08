@@ -83,6 +83,26 @@ def list_output_devices() -> list:
     return _enumerate_devices(EDataFlow.eRender)
 
 
+def _active_devices(kind: str | None) -> list:
+    flows = {"capture": [EDataFlow.eCapture], "render": [EDataFlow.eRender]}.get(
+        kind, [EDataFlow.eCapture, EDataFlow.eRender])
+    return [d for fl in flows for d in _enumerate_devices(fl)]
+
+
+def resolve_active_device(device_id: str, device_name: str = "") -> dict | None:
+    """Dispositivo ATIVO para um par (ID, nome) salvo: pelo NOME primeiro, depois
+    pelo ID. None se nenhum dos dois existe neste PC."""
+    kind = kind_from_id(device_id or "")
+    dev = find_device_by_name(device_name, kind) if device_name else None
+    if dev:
+        return dev
+    if device_id:
+        for d in _active_devices(kind):
+            if d["id"] == device_id:
+                return d
+    return None
+
+
 def find_device_by_name(name: str, kind: str | None = None) -> dict | None:
     """Dispositivo ATIVO com esse nome amigável, ou None.
 
@@ -92,9 +112,7 @@ def find_device_by_name(name: str, kind: str | None = None) -> dict | None:
     """
     if not name or not name.strip():
         return None
-    flows = {"capture": [EDataFlow.eCapture], "render": [EDataFlow.eRender]}.get(
-        kind, [EDataFlow.eCapture, EDataFlow.eRender])
-    candidates = [d for fl in flows for d in _enumerate_devices(fl)]
+    candidates = _active_devices(kind)
     for d in candidates:
         if d["name"] == name:
             return d

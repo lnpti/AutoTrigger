@@ -79,6 +79,7 @@ STEP_TYPES = [
 ]
 _TYPE_LABELS = {t: lbl for t, lbl in STEP_TYPES}
 _LABEL_TO_TYPE = {lbl: t for t, lbl in STEP_TYPES}
+_MISSING_PREFIX = "⚠ "   # item do combo p/ dispositivo salvo que não existe neste PC
 
 
 class StepEditor(QWidget):
@@ -183,10 +184,22 @@ class StepEditor(QWidget):
             names = [d["name"] for d in self._devices] or ["(nenhum)"]
             combo.addItems(names)
             cur = s.get("device_id", "")
-            for i, d in enumerate(self._devices):
-                if d["id"] == cur or d["name"] == s.get("device_name", ""):
-                    combo.setCurrentIndex(i)
+            saved_name = s.get("device_name", "")
+            found = False
+            for i, d in enumerate(self._devices):  # nome primeiro: o ID muda, o nome não
+                if saved_name and d["name"] == saved_name:
+                    combo.setCurrentIndex(i); found = True
                     break
+            if not found:
+                for i, d in enumerate(self._devices):
+                    if cur and d["id"] == cur:
+                        combo.setCurrentIndex(i); found = True
+                        break
+            if not found and (cur or saved_name):
+                # Placa do passo ausente neste PC: mostra isso (em vez de fingir que
+                # o 1º da lista é o escolhido); o _save mantém o dispositivo salvo.
+                combo.insertItem(0, f"{_MISSING_PREFIX}{saved_name or cur} (não encontrado)")
+                combo.setCurrentIndex(0)
             self._w["device"] = combo
             self._form.addRow(_lbl("Dispositivo"), form_field(combo))
             self._add_label_row(s)
@@ -314,9 +327,13 @@ class StepEditor(QWidget):
         if t in ("mute", "unmute", "open_channel", "close_channel"):
             name = w["device"].currentText()
             dev_id = ""
-            for d in self._devices:
-                if d["name"] == name:
-                    dev_id = d["id"]; break
+            if name.startswith(_MISSING_PREFIX):   # não trocou a placa: mantém a salva
+                dev_id = self._step.get("device_id", "")
+                name = self._step.get("device_name", "") or dev_id
+            else:
+                for d in self._devices:
+                    if d["name"] == name:
+                        dev_id = d["id"]; break
             step["device_id"] = dev_id
             step["device_name"] = name
             step["label"] = label or name

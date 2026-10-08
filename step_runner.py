@@ -31,7 +31,12 @@ def step_gain_db(step: dict) -> float:
 class StepRunner:
     def __init__(self, player):
         self._player = player
+        self._global_provider = lambda: {}   # -> config global (ver set_global_provider)
         self._log = lambda msg, level="info": print(f"[StepRunner][{level}] {msg}")
+
+    def set_global_provider(self, fn):
+        """fn() -> dict da config global; dá acesso às placas padrão."""
+        self._global_provider = fn
 
     def set_log(self, fn):
         self._log = fn
@@ -87,9 +92,29 @@ class StepRunner:
         if dry_run:
             self._log(f"[ENSAIO] {action}: {name} (sem efeito real)", "warn")
             return True
+        dev_name = step.get("device_name", "")
+        target_id, target_name = device_id, dev_name
+        if _audio.resolve_active_device(device_id, dev_name) is None:
+            fb = self._default_device_for(device_id)
+            if fb:
+                self._log(f"⚠ '{name}' não existe neste PC — usando a placa padrão das "
+                          f"Configurações Globais: '{fb[1]}'.", "warn")
+                target_id, name = fb
+                target_name = fb[1]
         self._log(f"{action}: {name}")
-        _audio.set_device_mute(device_id, mute, step.get("device_name", ""))
+        _audio.set_device_mute(target_id, mute, target_name)
         return True  # continua mesmo em falha de mute
+
+    def _default_device_for(self, device_id: str):
+        """(id, nome) da placa padrão (entrada ou saída, conforme o ID salvo no
+        passo) das Configurações Globais, se ela existir neste PC; senão None."""
+        prefix = {"capture": "input", "render": "output"}.get(_audio.kind_from_id(device_id or ""))
+        if not prefix:
+            return None
+        g = self._global_provider() or {}
+        dev = _audio.resolve_active_device(g.get(f"default_{prefix}_device_id", ""),
+                                           g.get(f"default_{prefix}_device_name", ""))
+        return (dev["id"], dev["name"]) if dev else None
 
     def _do_hotkey(self, step: dict, dry_run: bool = False) -> bool:
         hk = step.get("hotkey", "")

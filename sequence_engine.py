@@ -22,6 +22,7 @@ class SequenceEngine:
         self._config = config
         self._file_monitor = file_monitor
         self._step_runner = StepRunner(player)
+        self._step_runner.set_global_provider(lambda: self._config.get_global())
         self._player = player
 
         self._runners: Dict[str, SequenceRunner] = {}

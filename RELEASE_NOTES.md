@@ -1,3 +1,17 @@
+## AutoTrigger V10 — v2.3.22
+
+### Mute com a placa certa
+
+- Corrige o mute/unmute que procurava uma placa diferente da selecionada. Se a
+  placa gravada no passo não existir neste PC (por exemplo, configuração vinda
+  de outro estúdio), o app usa a **placa padrão das Configurações Globais**
+  (entrada para mute de entrada, saída para saída) e avisa no log qual usou.
+  Quando a placa do passo existe, nada muda.
+- O editor de etapa não mostra mais a primeira placa da lista como se fosse a
+  escolhida: se a salva não existe neste PC, aparece "⚠ nome (não encontrado)",
+  e salvar sem trocar mantém a placa gravada. Escolher outra e salvar corrige o
+  passo de vez.
+
 ## AutoTrigger V10 — v2.3.21
 
 ### Placas de áudio achadas pelo nome
