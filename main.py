@@ -91,6 +91,7 @@ QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
 )
 
 from config import Config
+import keepalive
 import audio_manager as _audio
 from player import AudioPlayer
 from file_monitor import FileMonitor
@@ -217,6 +218,7 @@ def main():
         window.on_log("AVISO: VLC não disponível. Reprodução/stream desabilitados.", "error")
 
     def _quit():
+        keepalive.request_stop()  # saída pedida: o modo "sempre rodando" não reabre
         try:
             single_instance_server.close()
         except Exception:
@@ -260,6 +262,26 @@ def main():
     single_instance_server = _start_single_instance_server(
         lambda: (window.showNormal(), window.raise_(), window.activateWindow())
     )
+
+    # Modo "manter sempre rodando": vigia que reabre o app se ele sumir sem pedido.
+    # Desligamento/logoff do Windows e qualquer saída normal do Qt contam como
+    # pedida (o vigia só reabre quando o app some sem passar por aqui).
+    app.aboutToQuit.connect(keepalive.request_stop)
+    try:
+        app.commitDataRequest.connect(lambda *_: keepalive.request_stop())
+    except Exception:
+        pass
+    n_relaunch = keepalive.relaunch_count()
+    if n_relaunch:
+        applog.log(f"♻ Reaberto automaticamente pelo modo 'sempre rodando' "
+                   f"(tentativa {n_relaunch} de {keepalive._MAX_RELAUNCHES}).", "warn")
+    keepalive.apply(bool(config.get_global().get("keep_alive", False)))
+    keepalive_timer = QTimer(app)
+    keepalive_timer.timeout.connect(
+        lambda: keepalive.ensure_running()
+        if config.get_global().get("keep_alive", False) else None)
+    keepalive_timer.start(60_000)   # vigia morto (alguém o finalizou)? sobe de novo
+    QTimer.singleShot(120_000, keepalive.mark_stable)   # ficou estável: zera o contador
 
     # "Iniciar minimizado na bandeja": não mostra a janela, só o ícone. Sem
     # bandeja disponível o app ficaria invisível e sem como abrir -- nesse caso

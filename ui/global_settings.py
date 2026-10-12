@@ -67,8 +67,15 @@ class GlobalSettings(QWidget):
         self._boot_min.setToolTip(
             "Ao abrir, o app vai direto para o ícone da bandeja, sem mostrar a "
             "janela. Clique no ícone (ou reabra o atalho) para ver a janela.")
+        self._keep_alive = QCheckBox("Manter sempre rodando (reabrir sozinho se fechar)")
+        self._keep_alive.setToolTip(
+            "Se o app fechar sem você pedir (queda, 'Finalizar tarefa'...), ele é "
+            "reaberto sozinho em alguns segundos. Para sair de verdade, use 'Sair' "
+            "no menu do ícone da bandeja. Para também abrir quando o PC ligar, "
+            "marque 'Iniciar com o Windows'.")
         root.addWidget(self._boot_windows)
         root.addWidget(self._boot_min)
+        root.addWidget(self._keep_alive)
         self._section_gap(root)
 
         # TXT
@@ -241,6 +248,7 @@ class GlobalSettings(QWidget):
         # "Iniciar com o Windows" reflete o REGISTRO (o instalador também mexe nele).
         self._boot_windows.setChecked(startup.is_enabled())
         self._boot_min.setChecked(bool(g.get("start_minimized", False)))
+        self._keep_alive.setChecked(bool(g.get("keep_alive", False)))
         ml = g.get("medialog", {}) or {}
         self._ml_enabled.setChecked(bool(ml.get("enabled", False)))
         self._ml_folder.setText(ml.get("folder", DEFAULT_MEDIALOG["folder"]))
@@ -515,6 +523,7 @@ class GlobalSettings(QWidget):
         g = self._config.get_global()
         g["txt_file_path"] = self._txt.text().strip()
         g["start_minimized"] = self._boot_min.isChecked()
+        g["keep_alive"] = self._keep_alive.isChecked()
         if startup.is_supported():
             want = self._boot_windows.isChecked()
             # Ligado: regrava sempre (corrige o caminho se o app mudou de pasta).

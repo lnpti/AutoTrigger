@@ -1,3 +1,19 @@
+## AutoTrigger V10 — v2.3.24
+
+### Modo "manter sempre rodando"
+
+- Nova opção em Configurações Globais: **Manter sempre rodando (reabrir sozinho
+  se fechar)**. Com ela ligada, se o app sumir sem você pedir (queda, "Finalizar
+  tarefa"...), um vigia escondido o reabre em alguns segundos. O vigia é
+  separado do app e não atrapalha a atualização automática.
+- Não reabre quando a saída foi pedida: **Sair** no menu da bandeja, atualização
+  automática, desligar/fazer logoff do Windows ou desmarcar a opção.
+- Se o app cair ao abrir 5 vezes seguidas sem ficar estável por 2 minutos, o
+  vigia desiste (motivo no `keepalive.log`, na pasta de logs). O log do app
+  registra "♻ Reaberto automaticamente" a cada reabertura.
+- Não substitui **Iniciar com o Windows**: para o app também abrir quando o PC
+  ligar, marque as duas opções.
+
 ## AutoTrigger V10 — v2.3.23
 
 ### Atualização automática sem o erro "Failed to load Python DLL"

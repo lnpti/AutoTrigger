@@ -476,6 +476,8 @@ class MainWindow(QMainWindow):
 
     def _on_global_saved(self):
         self.on_log("Configurações globais salvas.", "success")
+        import keepalive
+        keepalive.apply(bool(self._config.get_global().get("keep_alive", False)))
         if self._engine.is_monitor_running():
             # Aplica caminhos novos (TXT / pasta do log do player) sem precisar
             # parar e iniciar o monitor na mão.

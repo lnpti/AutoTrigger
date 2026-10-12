@@ -295,6 +295,11 @@ del "%~f0"
             crashdiag.mark_clean("atualização automática")
         except Exception:
             pass
+        try:  # o modo "sempre rodando" não pode reabrir o app antigo durante a troca
+            import keepalive
+            keepalive.request_stop()
+        except Exception:
+            pass
         os._exit(0)
 
     # ── private ─────────────────────────────────────────────────────────────
