@@ -1,3 +1,32 @@
+## AutoTrigger V10 — v2.3.25
+
+### Correção da queda silenciosa do app (a causa real)
+
+- Os `crash.log` do estúdio mostraram a causa das quedas sem aviso: uma falha
+  nativa (`access violation`) quando o Python liberava objetos COM de áudio em
+  uma thread diferente da que os criou. Reproduzido em teste e corrigido: esses
+  objetos agora só são liberados quando o app fecha. Afetava o mute, a lista de
+  placas e o vigia de áudio do stream.
+- Se a proteção não puder ser aplicada, o log avisa na abertura.
+
+### Retomada da sequência depois de uma queda
+
+- Se o app cair no meio de uma sequência e voltar (pelo modo "sempre rodando"),
+  ele **continua na etapa em que estava**: o stream segue só pelo tempo que
+  faltava (com o mesmo ganho), esperas retomam o que faltava, uma espera por
+  palavra-chave avança se a palavra já apareceu no TXT, e mute/hotkey repetem.
+  Um áudio que estava tocando não é repetido.
+- Só retoma se o app voltou em até **3 minutos** (campo novo em Configurações
+  Globais; 0 = nunca retomar). Fora disso, ou se a sequência já foi retomada 2
+  vezes, o log explica e o app **desmuta o que a sequência tinha mutado**.
+- Sair pelo menu da bandeja nunca retoma nada.
+
+### Vigia "sempre rodando" mais confiável
+
+- Corrigido o vigia que reabria o app à toa (com o app vivo) e, depois de 5
+  vezes, desistia para sempre. Agora só reabre se o app não der sinal de vida, e
+  o contador de reaberturas zera a cada minuto de app estável.
+
 ## AutoTrigger V10 — v2.3.24
 
 ### Modo "manter sempre rodando"

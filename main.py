@@ -4,6 +4,7 @@ Inicializa logging, backend, ponte de threads, janela e bandeja.
 """
 import sys
 import os
+import time
 
 # Compatibilidade com PyInstaller (recursos bundled)
 if getattr(sys, "frozen", False):
@@ -33,6 +34,7 @@ def _setup_bundled_vlc():
 _setup_bundled_vlc()
 
 # COM antes de qualquer import de pycaw
+import comsafe  # impede queda nativa: comtypes liberando ponteiros no GC
 import comtypes
 try:
     comtypes.CoInitialize()
@@ -182,6 +184,9 @@ def main():
     import crashdiag
     from version import __version__ as _app_version
     crashdiag.install(applog.log_dir(), _app_version, applog.log)
+    if not comsafe.PATCHED:
+        applog.log("⚠ Proteção contra queda do COM não aplicada (versão do comtypes mudou?): "
+                   "o app pode cair ao liberar objetos de áudio.", "warn")
     crashdiag.start_freeze_watchdog(app, applog.log)
 
     _suppress_screensaver_and_sleep()
@@ -263,6 +268,10 @@ def main():
         lambda: (window.showNormal(), window.raise_(), window.activateWindow())
     )
 
+    # Depois de uma queda: retoma a sequência que estava rodando (depois que o monitor
+    # do TXT já subiu -- ele liga ~0,5 s após a janela).
+    QTimer.singleShot(4000, engine.resume_interrupted)
+
     # Modo "manter sempre rodando": vigia que reabre o app se ele sumir sem pedido.
     # Desligamento/logoff do Windows e qualquer saída normal do Qt contam como
     # pedida (o vigia só reabre quando o app some sem passar por aqui).
@@ -276,12 +285,17 @@ def main():
         applog.log(f"♻ Reaberto automaticamente pelo modo 'sempre rodando' "
                    f"(tentativa {n_relaunch} de {keepalive._MAX_RELAUNCHES}).", "warn")
     keepalive.apply(bool(config.get_global().get("keep_alive", False)))
+    started_at = time.monotonic()
+
+    def _keepalive_tick():
+        if time.monotonic() - started_at > 120:
+            keepalive.mark_stable()   # estável: zera o contador (vale a cada minuto, não só 1x)
+        if config.get_global().get("keep_alive", False):
+            keepalive.ensure_running()   # vigia morto (alguém o finalizou)? sobe de novo
+
     keepalive_timer = QTimer(app)
-    keepalive_timer.timeout.connect(
-        lambda: keepalive.ensure_running()
-        if config.get_global().get("keep_alive", False) else None)
-    keepalive_timer.start(60_000)   # vigia morto (alguém o finalizou)? sobe de novo
-    QTimer.singleShot(120_000, keepalive.mark_stable)   # ficou estável: zera o contador
+    keepalive_timer.timeout.connect(_keepalive_tick)
+    keepalive_timer.start(60_000)
 
     # "Iniciar minimizado na bandeja": não mostra a janela, só o ícone. Sem
     # bandeja disponível o app ficaria invisível e sem como abrir -- nesse caso

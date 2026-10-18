@@ -3,8 +3,11 @@ Gerencia dispositivos de áudio do Windows via pycaw / Windows Core Audio API.
 - Lista entradas (capture) e saídas (render)
 - Muta / desmuta dispositivos de entrada por device_id
 """
+import json
+import os
 import threading
 
+import comsafe  # noqa: F401  (antes de qualquer uso do comtypes: evita queda nativa no GC)
 import comtypes
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 from pycaw.constants import EDataFlow
@@ -17,7 +20,40 @@ _DEVICE_STATE_ACTIVE = 1
 # Garante que, ao fechar, só desmutamos o que nós mesmos mutamos —
 # nunca alteramos um dispositivo cujo mute não foi dado pelo app.
 _muted_by_app: set = set()
+_muted_names: dict = {}   # id -> nome, só para logar e achar a placa pelo nome
 _ledger_lock = threading.Lock()
+
+
+def _ledger_path() -> str:
+    import applog
+    return os.path.join(applog.log_dir(), "muted_by_app.json")
+
+
+def _save_ledger() -> None:
+    """Grava o que o app mutou: se ele cair, a próxima abertura sabe o que ficou
+    mutado (ver restore_stale_mutes). Chamar com _ledger_lock."""
+    try:
+        tmp = _ledger_path() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({i: _muted_names.get(i, "") for i in _muted_by_app}, f, ensure_ascii=False)
+        os.replace(tmp, _ledger_path())
+    except OSError:
+        pass
+
+
+def load_ledger() -> dict:
+    """Carrega o que uma sessão anterior deixou mutado (id -> nome) para o ledger
+    desta sessão (assim 'Sair' ou o unmute da sequência retomada desmutam certo)."""
+    try:
+        with open(_ledger_path(), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    with _ledger_lock:
+        for dev_id, name in data.items():
+            _muted_by_app.add(dev_id)
+            _muted_names[dev_id] = name
+    return dict(data)
 
 _log = lambda msg, level="info": print(f"[AudioManager][{level}] {msg}")
 
@@ -168,8 +204,10 @@ def set_device_mute(device_id: str, mute: bool, device_name: str = "") -> bool:
         with _ledger_lock:
             if mute:
                 _muted_by_app.add(device_id)
+                _muted_names[device_id] = device_name or _muted_names.get(device_id, "")
             else:
                 _muted_by_app.discard(device_id)
+            _save_ledger()
         return True
     except Exception as exc:
         hint = (f" — '{device_name}' não está ativo neste PC (placa conectada? "
@@ -189,12 +227,28 @@ def restore_app_mutes() -> list:
         pending = list(_muted_by_app)
     restored = []
     for device_id in pending:
-        if set_device_mute(device_id, False):
-            restored.append({"id": device_id, "name": get_device_name(device_id)})
+        if set_device_mute(device_id, False, _muted_names.get(device_id, "")):
+            restored.append({"id": device_id,
+                             "name": _muted_names.get(device_id) or get_device_name(device_id)})
     if restored:
         names = ", ".join(d["name"] for d in restored)
         _log(f"{len(restored)} dispositivo(s) desmutado(s) ao sair "
              f"(estavam mutados pelo app): {names}", "warn")
+    return restored
+
+
+def restore_stale_mutes() -> list:
+    """Desmuta o que uma sessão anterior que caiu deixou mutado (ledger gravado em
+    disco) e esquece o que não deu para desmutar (placa ausente), para não tentar
+    de novo a cada abertura. Retorna [{"id","name"}] dos desmutados."""
+    with _ledger_lock:
+        if not _muted_by_app:
+            return []
+    restored = restore_app_mutes()
+    with _ledger_lock:
+        _muted_by_app.clear()
+        _muted_names.clear()
+        _save_ledger()
     return restored
 
 

@@ -73,9 +73,22 @@ class GlobalSettings(QWidget):
             "reaberto sozinho em alguns segundos. Para sair de verdade, use 'Sair' "
             "no menu do ícone da bandeja. Para também abrir quando o PC ligar, "
             "marque 'Iniciar com o Windows'.")
+        resume_host = QWidget(); resume_l = QHBoxLayout(resume_host)
+        resume_l.setContentsMargins(0, 0, 0, 0)
+        resume_l.addWidget(QLabel("Se o app cair no meio de uma sequência, retomá-la se ele voltar em até"))
+        self._resume_min = QSpinBox()
+        self._resume_min.setRange(0, 60)
+        self._resume_min.setSuffix(" min")
+        self._resume_min.setToolTip(
+            "Quando o app reabre depois de uma queda, continua a sequência na etapa em que "
+            "estava (o stream segue só pelo tempo que faltava). Se ele ficou fora por mais "
+            "que isso, não retoma e só avisa no log. 0 = nunca retomar.")
+        resume_l.addWidget(self._resume_min)
+        resume_l.addStretch(1)
         root.addWidget(self._boot_windows)
         root.addWidget(self._boot_min)
         root.addWidget(self._keep_alive)
+        root.addWidget(resume_host)
         self._section_gap(root)
 
         # TXT
@@ -249,6 +262,7 @@ class GlobalSettings(QWidget):
         self._boot_windows.setChecked(startup.is_enabled())
         self._boot_min.setChecked(bool(g.get("start_minimized", False)))
         self._keep_alive.setChecked(bool(g.get("keep_alive", False)))
+        self._resume_min.setValue(int(g.get("resume_window_seconds", 180) or 0) // 60)
         ml = g.get("medialog", {}) or {}
         self._ml_enabled.setChecked(bool(ml.get("enabled", False)))
         self._ml_folder.setText(ml.get("folder", DEFAULT_MEDIALOG["folder"]))
@@ -524,6 +538,7 @@ class GlobalSettings(QWidget):
         g["txt_file_path"] = self._txt.text().strip()
         g["start_minimized"] = self._boot_min.isChecked()
         g["keep_alive"] = self._keep_alive.isChecked()
+        g["resume_window_seconds"] = self._resume_min.value() * 60
         if startup.is_supported():
             want = self._boot_windows.isChecked()
             # Ligado: regrava sempre (corrige o caminho se o app mudou de pasta).

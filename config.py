@@ -107,6 +107,7 @@ DEFAULT_MEDIALOG = {
 DEFAULT_GLOBAL = {
     "start_minimized": False,   # abre direto na bandeja, sem mostrar a janela
     "keep_alive": False,        # reabre sozinho se o app fechar sem pedido (ver keepalive.py)
+    "resume_window_seconds": 180,  # retoma a sequência interrompida por queda se o app voltar em até isso (0 = não retoma)
     "txt_file_path": "",
     "default_input_device_id": "",
     "default_input_device_name": "",

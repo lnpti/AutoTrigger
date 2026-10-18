@@ -29,7 +29,17 @@ class SequenceRunner:
         log_callback: Optional[Callable] = None,
         dry_run: bool = False,
         extra_delay_seconds: float = 0.0,
+        resume: Optional[dict] = None,
+        progress_callback: Optional[Callable] = None,
+        keyword_check: Optional[Callable] = None,
     ):
+        # resume: entrada do diário (run_journal) de uma execução interrompida por
+        # queda -- retoma na etapa em que parou. progress_callback(kind, idx, step,
+        # end_epoch) alimenta o diário. keyword_check(kw) -> bool diz se a palavra
+        # já está no TXT (para não esperar por algo que apareceu com o app fora).
+        self._resume = resume
+        self._progress = progress_callback
+        self._keyword_check = keyword_check
         # Atraso somado ao `trigger_delay_seconds` da sequência (ex.: tempo que
         # falta pro áudio do player terminar -- ver SequenceEngine._on_trigger).
         self._extra_delay = max(0.0, float(extra_delay_seconds))
@@ -104,8 +114,52 @@ class SequenceRunner:
             except Exception:
                 pass
 
+    def _report(self, kind: str, idx: int, step, end_epoch):
+        if self._progress and not self._dry_run:
+            try:
+                self._progress(kind, idx, step, end_epoch)
+            except Exception:
+                pass
+
+    def _adjust_resumed_step(self, step: dict, i: int, n: int):
+        """Etapa em que o app caiu -> o que fazer ao retomar. None = pular."""
+        t = step.get("type", "")
+        label = step.get("label") or t
+        end = (self._resume or {}).get("phase_end")
+        rem = (float(end) - time.time()) if end else None
+        if t == "stream":
+            if rem is None or rem < 5:
+                self._log(f"⏭ [{i + 1}/{n}] {label}: o stream já estaria terminando — seguindo.", "warn")
+                return None
+            self._log(f"🔁 [{i + 1}/{n}] {label}: retomando o stream por mais "
+                      f"{fmt_secs(int(rem))}.", "warn")
+            return {**step, "duration_seconds": int(rem), "label": f"{label} (retomado)"}
+        if t == "wait_time":
+            if rem is None or rem <= 0:
+                self._log(f"⏭ [{i + 1}/{n}] {label}: a espera já teria acabado — seguindo.", "warn")
+                return None
+            self._log(f"🔁 [{i + 1}/{n}] {label}: retomando a espera por mais "
+                      f"{fmt_secs(int(rem))}.", "warn")
+            return {**step, "seconds": rem, "label": f"{label} (retomado)"}
+        if t == "play_audio":
+            self._log(f"⏭ [{i + 1}/{n}] {label}: o áudio interrompido não é repetido — seguindo.", "warn")
+            return None
+        if t == "wait_keyword":
+            kw = step.get("keyword", "")
+            if kw and self._keyword_check and self._keyword_check(kw):
+                self._log(f"⏭ [{i + 1}/{n}] {label}: '{kw}' já está no TXT (apareceu com o "
+                          f"app fora) — seguindo.", "warn")
+                return None
+            self._log(f"🔁 [{i + 1}/{n}] {label}: voltando a aguardar '{kw}'.", "warn")
+            return step
+        self._log(f"🔁 [{i + 1}/{n}] {label}: repetindo a etapa interrompida.", "warn")
+        return step
+
     def _run(self):
-        self._notify(RunnerState.RUNNING, -1)
+        resume = self._resume
+        resume_step = int(resume.get("step", 0)) if resume else 0
+        in_delay = bool(resume) and resume.get("phase") == "delay"
+        self._notify(RunnerState.RUNNING, -1 if (not resume or in_delay) else max(resume_step, 0))
         steps = self._seq.get("steps", [])
         n = len(steps)
         name = self._seq.get("name", self.seq_id)
@@ -114,8 +168,14 @@ class SequenceRunner:
 
         # ── Atraso após o gatilho (delay) ──────────────────────────────────────
         delay = float(int(self._seq.get("trigger_delay_seconds", 0) or 0)) + self._extra_delay
+        if resume:
+            # Retomada: só o que faltava do atraso (se a queda foi nele); nada se
+            # a queda foi depois dele.
+            end_d = resume.get("phase_end")
+            delay = max(0.0, float(end_d) - time.time()) if (in_delay and end_d) else 0.0
         if self._dry_run:
             delay = min(delay, 3.0)
+        self._report("delay", -1, None, (time.time() + delay) if delay > 0 else None)
         if delay > 0:
             self._log(f"⏳ Aguardando {fmt_secs(int(round(delay)))} antes de iniciar…", "info")
             # Relógio monotônico + sono curto: termina no instante certo (o
@@ -140,14 +200,30 @@ class SequenceRunner:
                 self._notify(RunnerState.CANCELLED, -1)
                 return
 
+        resume_pending = bool(resume) and not in_delay
         for i, step in enumerate(steps):
+            if resume_pending and i < resume_step:
+                continue
             if self._stop_event.is_set():
                 self._notify(RunnerState.CANCELLED, i)
                 return
 
+            if resume_pending and i == resume_step:
+                resume_pending = False
+                step = self._adjust_resumed_step(step, i, n)
+                if step is None:
+                    continue
+
             self._notify(RunnerState.RUNNING, i)
             label = step.get("label") or step.get("type", "?")
             self._log(f"▶ [{i + 1}/{n}] {label}", "info")
+            now = time.time()
+            end_at = None
+            if step.get("type") == "stream":
+                end_at = now + int(step.get("duration_seconds", 300))
+            elif step.get("type") == "wait_time":
+                end_at = now + float(step.get("seconds", 0))
+            self._report("step", i, step, end_at)
 
             def _tick(elapsed, total, _i=i):
                 if self._on_tick:

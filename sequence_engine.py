@@ -6,10 +6,13 @@ Motor de sequências — gerencia múltiplas sequências em paralelo.
 - Expõe callbacks de estado/tick para a UI
 """
 import threading
+import time
 from datetime import datetime
 from typing import Callable, Dict, Optional
 
+import audio_manager as _audio
 import emailer
+import run_journal
 import telegram_notifier
 from step_runner import StepRunner
 from sequence_runner import SequenceRunner, RunnerState
@@ -36,6 +39,12 @@ class SequenceEngine:
         # Watchdog de stream → alerta por email
         self._streaming_seq_id: Optional[str] = None
         self._player.set_on_stream_event(self._on_stream_event)
+
+        # Retomada após queda: lê ANTES de qualquer execução nova sobrescrever o
+        # diário, e carrega o que a sessão anterior deixou mutado (ver resume_interrupted).
+        self._prior_runs: dict = run_journal.load()
+        self._stale_mutes: dict = _audio.load_ledger()
+        threading.Thread(target=self._journal_loop, daemon=True, name="run-journal").start()
 
     # ── configuration ─────────────────────────────────────────────────────────
 
@@ -156,8 +165,9 @@ class SequenceEngine:
         self.run_sequence(seq_id, extra_delay=extra)
 
     def run_sequence(self, seq_id: str, dry_run: bool = False, manual: bool = False,
-                     extra_delay: float = 0.0):
-        """Inicia uma sequência. manual=True ignora o gatilho do TXT (botão Rodar)."""
+                     extra_delay: float = 0.0, resume: dict | None = None):
+        """Inicia uma sequência. manual=True ignora o gatilho do TXT (botão Rodar).
+        `resume` (entrada do diário) retoma uma execução interrompida por queda."""
         runner = self._runners.get(seq_id)
         if runner and runner.state == RunnerState.RUNNING:
             seq = self._config.get_sequence_by_id(seq_id)
@@ -176,8 +186,15 @@ class SequenceEngine:
             origin = "manual" if manual else "gatilho"
             self._log_fn(f"🚀 Iniciando ({origin}): '{name}'", "success")
 
-        runner = SequenceRunner(seq, self._step_runner, self._log_fn, dry_run=dry_run,
-                                extra_delay_seconds=extra_delay)
+        if not dry_run:
+            run_journal.begin(seq_id, name,
+                              resumes=(int(resume.get("resumes", 0)) + 1) if resume else 0)
+        runner = SequenceRunner(
+            seq, self._step_runner, self._log_fn, dry_run=dry_run,
+            extra_delay_seconds=extra_delay, resume=resume,
+            progress_callback=lambda kind, i, step, end, _id=seq_id: self._on_progress(
+                _id, kind, i, step, end),
+            keyword_check=self._txt_contains)
         runner.set_keyword_waiter(self._make_keyword_waiter())
         runner.set_callbacks(
             on_state_change=lambda s, i, _id=seq_id: self._on_state(_id, s, i),
@@ -239,6 +256,9 @@ class SequenceEngine:
                 self._streaming_seq_id = None
 
         runner = self._runners.get(seq_id)
+        if (state in (RunnerState.DONE, RunnerState.ERROR, RunnerState.CANCELLED)
+                and (runner is None or not runner.is_dry_run)):
+            run_journal.end(seq_id)   # terminou (ou foi cancelada): nada a retomar
         if runner is None or not runner.is_dry_run:  # ignora ensaios
             self._maybe_email_state(seq_id, state, step_idx)
             self._maybe_telegram_state(seq_id, state, step_idx)
@@ -331,6 +351,82 @@ class SequenceEngine:
     def cancel_all(self):
         for runner in self._runners.values():
             runner.cancel()
+        run_journal.clear()   # saída pedida (Sair): não retomar nada na próxima abertura
+
+    # ── retomada após queda ───────────────────────────────────────────────────
+
+    def _on_progress(self, seq_id: str, kind: str, idx: int, step, end_epoch):
+        if kind == "delay":
+            run_journal.update(seq_id, "delay", -1, "", end_epoch)
+        else:
+            run_journal.update(seq_id, "step", idx, (step or {}).get("type", ""), end_epoch)
+
+    def _live_end(self, entry: dict):
+        """Término AO VIVO do stream (o usuário pode ter dado/tirado tempo)."""
+        if entry.get("step_type") == "stream" and self._player.is_streaming():
+            return self._player.get_stream_end_time()
+        return None
+
+    def _journal_loop(self):
+        while True:
+            time.sleep(5.0)
+            try:
+                run_journal.touch(self._live_end)
+            except Exception:
+                pass
+
+    def _txt_contains(self, keyword: str) -> bool:
+        """A palavra já está no TXT monitorado agora? (retomada: ela pode ter
+        aparecido enquanto o app estava fora)."""
+        path = (self._config.get_global().get("txt_file_path", "") or "").strip()
+        if not path or not keyword.strip():
+            return False
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                return keyword.strip().upper() in f.read().strip().upper()
+        except OSError:
+            return False
+
+    def resume_interrupted(self) -> int:
+        """Depois de uma queda: retoma, na etapa em que estavam, as sequências que
+        rodavam -- se o app voltou dentro do limite (Configurações Globais,
+        `resume_window_seconds`). O que não for retomado e tiver deixado a entrada
+        mutada é desmutado. Retorna quantas foram retomadas."""
+        runs, self._prior_runs = self._prior_runs, {}
+        window = int(self._config.get_global().get("resume_window_seconds", 180) or 0)
+        now = time.time()
+        resumed = 0
+        for seq_id, entry in runs.items():
+            seq = self._config.get_sequence_by_id(seq_id)
+            name = entry.get("name", seq_id)
+            down = max(0.0, now - float(entry.get("last_seen", 0)))
+            step_no = int(entry.get("step", -1)) + 1
+            where = f"etapa {step_no}" if step_no > 0 else "atraso inicial"
+            why = None
+            if seq is None or not seq.get("enabled", True):
+                why = "a sequência não existe mais ou está desativada"
+            elif window <= 0:
+                why = "a retomada está desligada em Configurações Globais"
+            elif down > window:
+                why = (f"o app ficou fora por {fmt_secs(int(down))}, mais que o limite de "
+                       f"{fmt_secs(window)}")
+            elif int(entry.get("resumes", 0)) >= 2:
+                why = "ela já foi retomada 2 vezes e o app caiu de novo"
+            if why:
+                self._log_fn(f"⚠ '{name}' estava em execução ({where}) quando o app caiu, "
+                             f"mas NÃO foi retomada: {why}.", "warn")
+                continue
+            self._log_fn(f"♻ Retomando '{name}' ({where}): o app ficou fora por "
+                         f"{fmt_secs(int(down))}.", "warn")
+            self._streaming_seq_id = seq_id
+            self.run_sequence(seq_id, resume=entry)
+            resumed += 1
+        if not resumed:
+            restored = _audio.restore_stale_mutes()
+            if restored:
+                self._log_fn("🔊 Desmutado(s) o(s) dispositivo(s) que ficaram mutados quando "
+                             "o app caiu: " + ", ".join(d["name"] for d in restored), "warn")
+        return resumed
 
     def get_runner(self, seq_id: str) -> Optional[SequenceRunner]:
         return self._runners.get(seq_id)

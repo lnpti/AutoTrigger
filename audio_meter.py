@@ -11,11 +11,11 @@ saídas ativas -- assim também dá para saber EM QUAL placa o áudio está sain
 (`location`). Todas as chamadas COM devem ser feitas na MESMA thread (a do
 monitor de stream).
 """
-import gc
 import os
 import time
 from ctypes import cast, POINTER
 
+import comsafe  # noqa: F401  (antes de qualquer uso do comtypes)
 import comtypes
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import (
@@ -24,7 +24,9 @@ from pycaw.pycaw import (
 )
 
 _SESSION_ACTIVE = 1
-_RETRY_EVERY = 2.0   # s entre buscas quando a sessão ainda não existe
+_RETRY_EVERY = 3.0        # s entre buscas quando a sessão ainda não existe
+_RETRY_SLOW_AFTER = 60.0  # depois de 1 min sem achar, busca só a cada 20 s
+_RETRY_SLOW_EVERY = 20.0
 
 
 class SessionPeakMeter:
@@ -33,6 +35,7 @@ class SessionPeakMeter:
         self._get_device_id = get_device_id
         self._meter = None
         self._next_try = 0.0
+        self._searching_since = None
         self.errors = 0
         self.location = None      # (id, nome) da saída onde a sessão foi achada
         self.last_problem = ""    # por que não mediu (para o log)
@@ -46,23 +49,31 @@ class SessionPeakMeter:
                     return None
                 self._meter = self._find_meter()
                 if self._meter is None:
-                    self._next_try = time.monotonic() + _RETRY_EVERY
+                    self._next_try = time.monotonic() + self._retry_delay()
                     return None
+                self._searching_since = None
             return float(self._meter.GetPeakValue())
         except Exception as exc:
             self._meter = None
             self.errors += 1
             self.last_problem = f"{type(exc).__name__}: {exc}"
-            self._next_try = time.monotonic() + _RETRY_EVERY
+            self._next_try = time.monotonic() + self._retry_delay()
             return None
+
+    def _retry_delay(self) -> float:
+        now = time.monotonic()
+        if self._searching_since is None:
+            self._searching_since = now
+        return _RETRY_SLOW_EVERY if now - self._searching_since > _RETRY_SLOW_AFTER else _RETRY_EVERY
 
     def reset(self):
         """Descarta a sessão atual (chamar depois de recriar o player: a sessão
-        antiga morre e o medidor dela passaria a ler 0 para sempre)."""
+        antiga morre e o medidor dela passaria a ler 0 para sempre). Não libera
+        nada explicitamente: ver comsafe (liberar COM no GC derrubava o app)."""
         self._meter = None
         self.location = None
         self._next_try = 0.0
-        gc.collect()
+        self._searching_since = None
 
     def close(self):
         self.reset()

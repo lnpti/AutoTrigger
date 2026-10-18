@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 import time
 
 import applog
@@ -27,6 +28,7 @@ _RELAUNCH_PINGS = 6    # ~5 s de espera antes de reabrir
 _HEARTBEAT_STALE = 20.0
 _RESPAWN_GRACE = 20.0
 _last_spawn = 0.0
+_app_hb_stop: threading.Event | None = None
 
 
 def _dir() -> str:
@@ -77,6 +79,32 @@ def guardian_alive() -> bool:
         return False
 
 
+def _app_heartbeat_loop(path: str, stop: threading.Event) -> None:
+    """O app recria `keepalive.app` a cada ~2 s. O vigia apaga o arquivo antes de
+    reabrir o app: se ele reaparece, o app está vivo e a checagem de PID errou."""
+    while not stop.is_set():
+        try:
+            with open(path, "a"):
+                pass
+        except OSError:
+            pass
+        stop.wait(2.0)
+
+
+def _start_app_heartbeat() -> None:
+    global _app_hb_stop
+    if _app_hb_stop is not None and not _app_hb_stop.is_set():
+        return
+    _app_hb_stop = threading.Event()
+    threading.Thread(target=_app_heartbeat_loop, args=(_path("keepalive.app"), _app_hb_stop),
+                     daemon=True, name="keepalive-app-hb").start()
+
+
+def _stop_app_heartbeat() -> None:
+    if _app_hb_stop is not None:
+        _app_hb_stop.set()
+
+
 def _bat_text(pid: int, app_cmd: str) -> str:
     return f"""@chcp 65001 >nul
 @echo off
@@ -84,6 +112,7 @@ set PYINSTALLER_RESET_ENVIRONMENT=1
 set "STOP={_path('keepalive.stop')}"
 set "COUNT={_path('keepalive.count')}"
 set "HB={_path('keepalive.hb')}"
+set "APPHB={_path('keepalive.app')}"
 set "LOG={_path('keepalive.log')}"
 :wait
 if exist "%STOP%" goto fim
@@ -93,10 +122,14 @@ if errorlevel 1 goto caiu
 ping -n {_POLL_PINGS} 127.0.0.1 >NUL
 goto wait
 :caiu
-REM Espera um pouco: se o Windows esta desligando, este script morre junto antes
-REM de reabrir; e da tempo da saida pedida (Sair/atualizacao) criar o .stop.
+REM A checagem de PID ja errou com o app vivo (reaberturas a toa, ate desistir). Por
+REM isso so reabre se o app NAO der sinal de vida: apaga o arquivo que o app recria
+REM a cada 2 s e espera. Tambem da tempo da saida pedida (Sair/atualizacao) criar o
+REM .stop e, se o Windows esta desligando, este script morre antes de reabrir.
+del "%APPHB%" >NUL 2>&1
 ping -n {_RELAUNCH_PINGS} 127.0.0.1 >NUL
 if exist "%STOP%" goto fim
+if exist "%APPHB%" goto vivo
 set N=0
 if exist "%COUNT%" set /p N=<"%COUNT%"
 if %N% GEQ {_MAX_RELAUNCHES} goto desistiu
@@ -105,6 +138,9 @@ set /a N+=1
 >>"%LOG%" echo %date% %time% - o app fechou sem pedido; reabrindo (tentativa %N% de {_MAX_RELAUNCHES})
 start "" {app_cmd}
 goto fim
+:vivo
+>>"%LOG%" echo %date% %time% - falso alarme: a checagem de PID falhou mas o app esta vivo; seguindo
+goto wait
 :desistiu
 >>"%LOG%" echo %date% %time% - o app caiu {_MAX_RELAUNCHES} vezes seguidas sem ficar estavel; vigia desistiu
 :fim
@@ -145,8 +181,10 @@ def apply(enabled: bool) -> None:
     """Liga/desliga o modo conforme a configuração (chamado ao abrir e ao salvar)."""
     global _last_spawn
     if enabled:
+        _start_app_heartbeat()
         ensure_running()
     else:
         _last_spawn = 0.0
+        _stop_app_heartbeat()
         if guardian_alive():
             request_stop()
