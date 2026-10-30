@@ -1,3 +1,15 @@
+## AutoTrigger V10 — v2.3.26
+
+### Duas sequências disparando juntas
+
+- Corrige sequências que iniciavam ao mesmo tempo quando a keyword de uma é o
+  começo da keyword de outra (ex.: `…3H` dentro de `…3H45`): o texto "…3H45"
+  disparava a 3h **e** a 3h45. Agora, se um texto casa com várias keywords e uma
+  está contida em outra, dispara só a **mais específica**. Vale para o arquivo TXT,
+  para o log do player e para palavras de espera (`FIM_ESPORTE` x `ESPORTE`).
+- O log avisa quando ignora uma keyword por isso ("ignorada: o texto também casa
+  com '…' (mais específica)"). Keywords independentes continuam disparando juntas.
+
 ## AutoTrigger V10 — v2.3.25
 
 ### Correção da queda silenciosa do app (a causa real)

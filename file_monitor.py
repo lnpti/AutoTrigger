@@ -58,6 +58,18 @@ class _Router:
                 (kw, cb) for kw, cb in self._maps[source].items()
                 if kw and kw in content_upper
             ]
+        # Keyword contida em OUTRA keyword que também casou ("…3H" dentro de "…3H45"):
+        # vale só a mais específica. Sem isso, o texto "…3H45" disparava a sequência
+        # 3h E a 3h45 ao mesmo tempo (visto nos logs do estúdio: 3h+3h30min, 4h+4h15min).
+        names = [kw for kw, _ in matched]
+        specific = [(kw, cb) for kw, cb in matched
+                    if not any(kw != other and kw in other for other in names)]
+        for kw, _cb in matched:
+            if all(kw != k for k, _ in specific):
+                longer = next(o for o in names if o != kw and kw in o)
+                self._log(f"↳ Keyword '{kw}' ignorada: o texto também casa com '{longer}' "
+                          f"(mais específica).")
+        matched = specific
         for kw, cb in matched:
             self._log(f"▶ Keyword: '{kw}'")
             args = (ctx or {},) if source == SOURCE_MEDIALOG else ()
