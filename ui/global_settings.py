@@ -56,6 +56,19 @@ class GlobalSettings(QWidget):
         root.addWidget(title)
         root.addWidget(hline())
 
+        # ── Local deste app ───────────────────────────────────────────────────
+        sec_loc = QLabel("LOCAL DESTE APP")
+        sec_loc.setObjectName("section")
+        root.addWidget(sec_loc)
+        self._location = QLineEdit()
+        self._location.setPlaceholderText("ex.: Rádio Tua — Estúdio 2 (Marau)")
+        self._location.setMaxLength(120)
+        root.addWidget(LabeledRow("Nome / descrição", self._location, label_w=120))
+        root.addWidget(_lbl_section(
+            "Aparece no início de cada alerta de Telegram e de e-mail, para você saber de "
+            "qual local o aviso veio (útil quando o app roda em vários lugares)."))
+        self._section_gap(root)
+
         # ── Inicialização ─────────────────────────────────────────────────────
         sec_boot = QLabel("INICIALIZAÇÃO")
         sec_boot.setObjectName("section")
@@ -282,6 +295,7 @@ class GlobalSettings(QWidget):
         g = self._config.get_global()
         self._txt.setText(g.get("txt_file_path", ""))
         # "Iniciar com o Windows" reflete o REGISTRO (o instalador também mexe nele).
+        self._location.setText(str(g.get("location", "") or ""))
         self._boot_windows.setChecked(startup.is_enabled())
         self._boot_min.setChecked(bool(g.get("start_minimized", False)))
         self._keep_alive.setChecked(bool(g.get("keep_alive", False)))
@@ -425,8 +439,9 @@ class GlobalSettings(QWidget):
             return
         telegram_notifier.notify_async(
             cfg,
-            f"AutoTrigger V10 — mensagem de teste para {name}. Se você recebeu, "
-            "os alertas estão configurados corretamente.",
+            telegram_notifier.with_location(
+                f"AutoTrigger V10 — mensagem de teste para {name}. Se você recebeu, "
+                "os alertas estão configurados corretamente.", self._location.text()),
             log=self._log,
             contacts=[{"name": name, "chat_id": str(contact["chat_id"]).strip()}],
         )
@@ -455,13 +470,12 @@ class GlobalSettings(QWidget):
             self._log("📧 Preencha servidor SMTP, remetente e destinatário antes de testar.", "warn")
             return
         self._log("📧 Enviando e-mail de teste…", "info")
-        emailer.notify_async(
-            cfg,
+        subject, body = emailer.with_location(
             "AutoTrigger V10 — e-mail de teste",
             "Este é um e-mail de teste do AutoTrigger V10. "
             "Se você recebeu, os alertas estão configurados corretamente.",
-            log=self._log,
-        )
+            self._location.text())
+        emailer.notify_async(cfg, subject, body, log=self._log)
 
     def _load_devices(self, force: bool = False):
         if force or _DEV_CACHE["inputs"] is None:
@@ -608,6 +622,7 @@ class GlobalSettings(QWidget):
     def _save(self):
         g = self._config.get_global()
         g["txt_file_path"] = self._txt.text().strip()
+        g["location"] = self._location.text().strip()
         g["start_minimized"] = self._boot_min.isChecked()
         g["keep_alive"] = self._keep_alive.isChecked()
         g["resume_window_seconds"] = self._resume_min.value() * 60

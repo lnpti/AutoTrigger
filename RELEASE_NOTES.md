@@ -1,3 +1,16 @@
+## AutoTrigger V10 — v2.3.29
+
+### Identificação do local nos alertas
+
+- Novo campo **Local deste app** (Nome / descrição) em Configurações Globais, para
+  quem roda o app em vários lugares saber de onde veio o alerta. Ex.: "Rádio Tua —
+  Estúdio 2 (Marau)".
+- **Telegram:** a primeira linha de cada alerta passa a ser `📍 <local>`.
+  **E-mail:** o assunto ganha o prefixo `[<local>]` e o corpo começa com `Local: <local>`.
+  Vale para início, fim, erro/cancelamento e queda/reconexão de stream, e também para
+  os botões de teste (que usam o texto digitado, mesmo antes de salvar).
+- Com o campo vazio, os alertas continuam exatamente como antes.
+
 ## AutoTrigger V10 — v2.3.28
 
 ### Atualização que não trava mais em silêncio

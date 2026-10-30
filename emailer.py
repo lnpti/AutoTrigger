@@ -74,6 +74,14 @@ def send_email(cfg: dict, subject: str, body: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def with_location(subject: str, body: str, location: str) -> tuple:
+    """(assunto, corpo) identificando o local: "[Local] assunto" + "Local: ..." no corpo."""
+    loc = (location or "").strip()
+    if not loc:
+        return subject, body
+    return f"[{loc}] {subject}", f"Local: {loc}\n\n{body}"
+
+
 def notify_async(cfg: dict, subject: str, body: str, log=None) -> None:
     """Dispara send_email em thread daemon. Loga sucesso/falha se `log` dado."""
     def _run():

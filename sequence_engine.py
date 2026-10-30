@@ -267,6 +267,11 @@ class SequenceEngine:
 
     # ── alertas por email / telegram ─────────────────────────────────────────────
 
+    def _location(self) -> str:
+        """Nome/descrição do local deste app (Configurações Globais): identifica de
+        onde veio o alerta quando o app roda em vários lugares."""
+        return str(self._config.get_global().get("location", "") or "").strip()
+
     def _email_cfg(self) -> dict:
         return self._config.get_global().get("email", {}) or {}
 
@@ -300,6 +305,7 @@ class SequenceEngine:
         msg = self._state_message(seq_id, state, step_idx)
         if msg and cfg.get("events", {}).get(msg[0]):
             _, subject, body = msg
+            subject, body = emailer.with_location(subject, body, self._location())
             emailer.notify_async(cfg, subject, body, log=self._log_fn)
 
     def _maybe_telegram_state(self, seq_id: str, state: RunnerState, step_idx: int):
@@ -310,7 +316,9 @@ class SequenceEngine:
         msg = self._state_message(seq_id, state, step_idx)
         if msg and cfg.get("events", {}).get(msg[0]):
             _, subject, body = msg
-            telegram_notifier.notify_async(cfg, f"{subject}\n{body}", log=self._log_fn)
+            telegram_notifier.notify_async(
+                cfg, telegram_notifier.with_location(f"{subject}\n{body}", self._location()),
+                log=self._log_fn)
 
     def _on_stream_event(self, kind: str, detail: str):
         """Handler do watchdog do player (queda/reconexão de stream)."""
@@ -330,12 +338,15 @@ class SequenceEngine:
         email_cfg = self._email_cfg()
         if (email_cfg.get("enabled") and emailer.is_configured(email_cfg)
                 and email_cfg.get("events", {}).get("stream_reconnect")):
-            emailer.notify_async(email_cfg, subject, body, log=self._log_fn)
+            mail_subject, mail_body = emailer.with_location(subject, body, self._location())
+            emailer.notify_async(email_cfg, mail_subject, mail_body, log=self._log_fn)
 
         tg_cfg = self._telegram_cfg()
         if (tg_cfg.get("enabled") and telegram_notifier.is_configured(tg_cfg)
                 and tg_cfg.get("events", {}).get("stream_reconnect")):
-            telegram_notifier.notify_async(tg_cfg, f"{subject}\n{body}", log=self._log_fn)
+            telegram_notifier.notify_async(
+                tg_cfg, telegram_notifier.with_location(f"{subject}\n{body}", self._location()),
+                log=self._log_fn)
 
     def _on_runner_tick(self, seq_id: str, step_idx: int, elapsed: float, total: float):
         if self._on_tick:

@@ -20,6 +20,12 @@ import requests
 _API_BASE = "https://api.telegram.org/bot{token}/sendMessage"
 
 
+def with_location(text: str, location: str) -> str:
+    """Abre o alerta com o local de onde ele vem ("📍 Rádio X — Estúdio 2")."""
+    loc = (location or "").strip()
+    return f"📍 {loc}\n{text}" if loc else text
+
+
 def active_contacts(cfg: dict) -> list:
     """Contatos que devem receber: habilitados e com chat_id preenchido.
 

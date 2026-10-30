@@ -109,6 +109,7 @@ DEFAULT_GLOBAL = {
     "keep_alive": False,        # reabre sozinho se o app fechar sem pedido (ver keepalive.py)
     "resume_window_seconds": 180,  # retoma a sequência interrompida por queda se o app voltar em até isso (0 = não retoma)
     "streams": [],              # streamings cadastrados [{"id","name","url"}]: as etapas de stream apontam para eles
+    "location": "",             # nome/descrição do local deste app: abre cada alerta de Telegram e e-mail
     "txt_file_path": "",
     "default_input_device_id": "",
     "default_input_device_name": "",
