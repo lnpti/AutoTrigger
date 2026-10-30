@@ -297,6 +297,20 @@ def main():
     keepalive_timer.timeout.connect(_keepalive_tick)
     keepalive_timer.start(60_000)
 
+    # Atualização automática de madrugada (4h por padrão): procura versão nova e instala
+    # sozinha, sem ninguém na frente, quando não há sequência rodando (auto_update.py).
+    import auto_update
+    from updater import Updater as _Updater
+    _notify = auto_update.make_notifier(config, applog.log)
+    auto_updater = auto_update.AutoUpdateScheduler(
+        lambda: config.get_global(), engine.is_busy, applog.log,
+        _Updater(log_callback=applog.log), notify=_notify)
+    auto_update_timer = QTimer(app)
+    auto_update_timer.timeout.connect(auto_updater.tick)
+    auto_update_timer.start(60_000)
+    QTimer.singleShot(10_000, lambda: auto_update.report_previous(
+        _app_version, applog.log, _notify))
+
     # "Iniciar minimizado na bandeja": não mostra a janela, só o ícone. Sem
     # bandeja disponível o app ficaria invisível e sem como abrir -- nesse caso
     # mostra a janela normalmente.

@@ -70,6 +70,14 @@ class SequenceEngine:
     def is_streaming(self) -> bool:
         return self._player.is_streaming()
 
+    def is_busy(self) -> bool:
+        """Há sequência rodando (ou stream/áudio de sequência tocando)? Usado para não
+        atualizar o app no meio de um disparo."""
+        if any(r.state == RunnerState.RUNNING and not r.is_dry_run
+               for r in self._runners.values()):
+            return True
+        return self._player.is_streaming()
+
     def adjust_stream_time(self, delta_seconds: float) -> Optional[float]:
         """Soma/subtrai tempo ao stream em execução. None se não há stream ativo."""
         return self._player.adjust_stream_time(delta_seconds)

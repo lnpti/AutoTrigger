@@ -100,10 +100,25 @@ class GlobalSettings(QWidget):
             "que isso, não retoma e só avisa no log. 0 = nunca retomar.")
         resume_l.addWidget(self._resume_min)
         resume_l.addStretch(1)
+        au_host = QWidget(); au_l = QHBoxLayout(au_host)
+        au_l.setContentsMargins(0, 0, 0, 0)
+        self._auto_update = QCheckBox("Atualizar sozinho de madrugada, às")
+        self._auto_update.setToolTip(
+            "Todo dia, a partir dessa hora (janela de 2 h), o app procura versão nova e "
+            "INSTALA sozinho, sem ninguém na frente. Só instala com nenhuma sequência "
+            "rodando: se houver, espera terminar. Não instala se a pasta do app exigir "
+            "administrador. Depois avisa por Telegram/e-mail que atualizou.")
+        self._auto_update_hour = QSpinBox()
+        self._auto_update_hour.setRange(0, 23)
+        self._auto_update_hour.setSuffix(" h")
+        au_l.addWidget(self._auto_update)
+        au_l.addWidget(self._auto_update_hour)
+        au_l.addStretch(1)
         root.addWidget(self._boot_windows)
         root.addWidget(self._boot_min)
         root.addWidget(self._keep_alive)
         root.addWidget(resume_host)
+        root.addWidget(au_host)
         self._section_gap(root)
 
         # TXT
@@ -299,6 +314,8 @@ class GlobalSettings(QWidget):
         self._boot_windows.setChecked(startup.is_enabled())
         self._boot_min.setChecked(bool(g.get("start_minimized", False)))
         self._keep_alive.setChecked(bool(g.get("keep_alive", False)))
+        self._auto_update.setChecked(bool(g.get("auto_update", True)))
+        self._auto_update_hour.setValue(int(g.get("auto_update_hour", 4)))
         self._resume_min.setValue(int(g.get("resume_window_seconds", 180) or 0) // 60)
         ml = g.get("medialog", {}) or {}
         self._ml_enabled.setChecked(bool(ml.get("enabled", False)))
@@ -625,6 +642,8 @@ class GlobalSettings(QWidget):
         g["location"] = self._location.text().strip()
         g["start_minimized"] = self._boot_min.isChecked()
         g["keep_alive"] = self._keep_alive.isChecked()
+        g["auto_update"] = self._auto_update.isChecked()
+        g["auto_update_hour"] = self._auto_update_hour.value()
         g["resume_window_seconds"] = self._resume_min.value() * 60
         if startup.is_supported():
             want = self._boot_windows.isChecked()

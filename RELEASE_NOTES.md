@@ -1,3 +1,23 @@
+## AutoTrigger V10 — v2.3.30
+
+### Atualização automática de madrugada
+
+- O app agora **procura versão nova e instala sozinho às 4h da manhã**, sem ninguém
+  na frente: baixa, troca o `.exe` e reabre. Ligado por padrão; em Configurações
+  Globais dá para desligar ou mudar a hora ("Atualizar sozinho de madrugada, às").
+- Tenta durante uma janela de **2 h** a partir da hora configurada, uma vez por dia.
+  Se não houver rede, repete a cada 10 min; se já estiver na versão mais nova, não
+  faz nada.
+- **Só instala com nenhuma sequência rodando** (e confere de novo logo antes de
+  trocar o `.exe`). Se houver uma rodando, espera terminar até o fim da janela; se
+  não terminar, adia para a madrugada seguinte.
+- Não tenta quando a pasta do app exige administrador (o UAC ficaria esperando um
+  clique): nesse caso avisa e a atualização continua manual.
+- A versão nova **avisa por Telegram e e-mail** (com o nome do local) que foi
+  atualizada, ou que a atualização não chegou a instalar. Os avisos aparecem no log
+  também.
+- A atualização com clique (botão no topo) continua funcionando como antes.
+
 ## AutoTrigger V10 — v2.3.29
 
 ### Identificação do local nos alertas

@@ -110,6 +110,8 @@ DEFAULT_GLOBAL = {
     "resume_window_seconds": 180,  # retoma a sequência interrompida por queda se o app voltar em até isso (0 = não retoma)
     "streams": [],              # streamings cadastrados [{"id","name","url"}]: as etapas de stream apontam para eles
     "location": "",             # nome/descrição do local deste app: abre cada alerta de Telegram e e-mail
+    "auto_update": True,        # procura e instala versão nova sozinho de madrugada (ver auto_update.py)
+    "auto_update_hour": 4,      # hora (0-23) em que começa a janela de 2 h da atualização automática
     "txt_file_path": "",
     "default_input_device_id": "",
     "default_input_device_name": "",

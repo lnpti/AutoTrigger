@@ -146,10 +146,17 @@ class Updater:
 
         threading.Thread(target=_task, daemon=True, name="updater-check").start()
 
-    def apply_update(self, info: UpdateInfo, progress_callback: Optional[Callable[[int], None]] = None):
+    def apply_update(self, info: UpdateInfo, progress_callback: Optional[Callable[[int], None]] = None,
+                     unattended: bool = False, before_install: Optional[Callable[[], bool]] = None):
         """
         Baixa o novo .exe e instala via script batch.
-        Encerra o processo atual após lançar o batch.
+        Encerra o processo atual após lançar o batch (sucesso nunca retorna).
+
+        unattended=True (atualização automática, sem ninguém na frente): não tenta
+        elevar via UAC (ficaria esperando um clique) -- retorna "elevation". Se
+        `before_install` for dado, é chamado logo antes de trocar o .exe e, se
+        devolver False (ex.: começou uma sequência durante o download), retorna "busy".
+        Falhas comuns retornam None.
         """
         if not REQUESTS_AVAILABLE:
             return
@@ -199,6 +206,11 @@ class Updater:
 
         # Precisa elevar? (Program Files não é gravável sem admin)
         needs_elevation = not _is_writable(app_dir)
+        if needs_elevation and unattended:
+            self._log("Atualização automática pulada: a pasta do app exige administrador "
+                      "(UAC) e não há ninguém para confirmar. Instale a versão nova manualmente.",
+                      "warn")
+            return "elevation"
 
         # Reinício: se elevado, usa o explorer para voltar ao nível normal de
         # privilégio; senão, start direto.
@@ -261,6 +273,14 @@ del "%~f0"
         bat_path = self._write_update_script(bat_content, tmp_dir, pid)
         if not bat_path:
             return
+        if before_install is not None and not before_install():
+            self._log("Atualização automática adiada: começou uma sequência durante o download.",
+                      "warn")
+            try:
+                os.remove(bat_path)
+            except OSError:
+                pass
+            return "busy"
 
         self._log(f"Instalando v{info.version}... O aplicativo será reiniciado.", "success")
 
