@@ -1,3 +1,22 @@
+## AutoTrigger V10 — v2.3.28
+
+### Atualização que não trava mais em silêncio
+
+- Corrige a atualização que ficava parada em 100% depois de "Download concluído.
+  Preparando instalação…". O script de instalação era gravado sempre com o mesmo
+  nome na pasta temporária; se essa gravação falhasse (arquivo antigo bloqueado ou
+  somente leitura, antivírus), a exceção só ia para o arquivo de log e a tela não
+  mostrava nada.
+- Agora o script tem **nome único a cada tentativa**, com a pasta de dados do app
+  como alternativa; cada falha aparece no log da tela, e se nada puder ser gravado o
+  log pede para instalar manualmente.
+- O diálogo de atualização se recupera: se a instalação não encerrar o app, o botão
+  volta como "Tentar de novo" com a explicação do problema.
+- Qualquer erro inesperado em uma thread de fundo (não só na atualização) passa a
+  aparecer também no log da tela, não apenas no arquivo.
+- A correção vale para as atualizações **a partir desta versão**; quem está numa
+  versão anterior e travar deve instalar o instalador desta versão uma vez.
+
 ## AutoTrigger V10 — v2.3.27
 
 ### Cadastro de streamings

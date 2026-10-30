@@ -24,6 +24,7 @@ import sys
 import threading
 import subprocess
 import tempfile
+import time
 from typing import Callable, Optional
 
 try:
@@ -171,7 +172,6 @@ class Updater:
         except OSError:
             tmp_dir = tempfile.gettempdir()
         new_exe = os.path.join(tmp_dir, f"{GITHUB_ASSET_NAME}.new")
-        bat_path = os.path.join(tmp_dir, "_update.bat")
         pid = os.getpid()
 
         # ── Download ──────────────────────────────────────────────────────
@@ -258,8 +258,9 @@ if errorlevel 1 (
 {restart_cmd}
 del "%~f0"
 """
-        with open(bat_path, "w", encoding="ascii", errors="replace") as f:
-            f.write(bat_content)
+        bat_path = self._write_update_script(bat_content, tmp_dir, pid)
+        if not bat_path:
+            return
 
         self._log(f"Instalando v{info.version}... O aplicativo será reiniciado.", "success")
 
@@ -323,6 +324,34 @@ del "%~f0"
                     size=asset.get("size", 0),
                 )
 
+        return None
+
+    def _write_update_script(self, content: str, tmp_dir: str, pid: int) -> Optional[str]:
+        """Grava o .bat da atualização e devolve o caminho (None se não deu).
+
+        O nome é ÚNICO por tentativa: um `_update.bat` antigo (travado, só leitura
+        ou barrado pelo antivírus) não pode mais impedir a atualização. Se a pasta
+        temporária não aceitar, tenta a pasta de dados do app. Cada falha vai para o
+        log da TELA (antes, a exceção só ia para o arquivo e o diálogo ficava parado
+        em 100% sem explicação)."""
+        candidates = [os.path.join(tmp_dir, f"_update_{pid}_{int(time.time())}.bat"),
+                      os.path.join(tmp_dir, "_update.bat")]
+        try:
+            import applog
+            candidates.append(os.path.join(applog.log_dir(), f"_update_{pid}.bat"))
+        except Exception:
+            pass
+        last = None
+        for path in candidates:
+            try:
+                with open(path, "w", encoding="ascii", errors="replace") as f:
+                    f.write(content)
+                return path
+            except OSError as exc:
+                last = exc
+                self._log(f"Não consegui gravar o script de atualização em '{path}': {exc}", "warn")
+        self._log(f"Erro: não foi possível preparar a instalação ({last}). Baixe o instalador "
+                  f"da versão nova e instale manualmente.", "error")
         return None
 
     def _fetch_latest_r2(self) -> Optional[UpdateInfo]:

@@ -116,12 +116,22 @@ def trace(msg: str):
 
 
 def _install_excepthooks():
+    def _to_ui(msg: str):
+        with _sink_lock:
+            sink = _ui_sink
+        if sink is not None:
+            try:
+                sink(msg, "error")
+            except Exception:
+                pass
+
     def _hook(exc_type, exc_value, exc_tb):
         text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
         if _logger is not None:
             _logger.error("Exceção não tratada:\n%s", text)
         else:
             print(text)
+        _to_ui(f"Erro inesperado: {exc_type.__name__}: {exc_value}")
 
     sys.excepthook = _hook
 
@@ -134,6 +144,8 @@ def _install_excepthooks():
                           getattr(args.thread, "name", "?"), text)
         else:
             print(text)
+        _to_ui(f"Erro inesperado na thread '{getattr(args.thread, 'name', '?')}': "
+               f"{args.exc_type.__name__}: {args.exc_value}")
 
     try:
         threading.excepthook = _thread_hook

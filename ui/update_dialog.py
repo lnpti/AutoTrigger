@@ -21,6 +21,7 @@ class UpdateDialog(QDialog):
     # fora da GUI thread não é seguro e podia derrubar o processo no meio do
     # download de arquivos grandes).
     _progress_changed = Signal(int)
+    _install_failed = Signal(str)
 
     def __init__(self, parent, update_info, on_confirm):
         super().__init__(parent)
@@ -28,6 +29,7 @@ class UpdateDialog(QDialog):
         self._on_confirm = on_confirm
         self._downloading = False
         self._progress_changed.connect(self._on_progress)
+        self._install_failed.connect(self._on_install_failed)
 
         self.setWindowTitle("Atualização Disponível")
         self.setMinimumSize(500, 400)
@@ -79,10 +81,27 @@ class UpdateDialog(QDialog):
         self._go.setText("Baixando…")
         self._progress.show()
 
-        threading.Thread(
-            target=lambda: self._on_confirm(self._info, self._progress_changed.emit),
-            daemon=True, name="updater-apply",
-        ).start()
+        def _run():
+            try:
+                self._on_confirm(self._info, self._progress_changed.emit)
+            except Exception as exc:
+                self._install_failed.emit(f"{type(exc).__name__}: {exc}")
+                return
+            # Instalação bem-sucedida encerra o processo (os._exit) e nunca chega aqui:
+            # voltar significa que NÃO instalou (o motivo está no log da tela).
+            self._install_failed.emit("")
+
+        threading.Thread(target=_run, daemon=True, name="updater-apply").start()
+
+    def _on_install_failed(self, reason: str):
+        self._downloading = False
+        self._go.setEnabled(True)
+        self._go.setText("⬇  Tentar de novo")
+        self._progress.hide()
+        self._progress_lbl.setText(
+            "Não foi possível instalar a atualização" + (f" ({reason})" if reason else "")
+            + ". Veja o motivo no log da janela principal; se continuar, baixe o instalador "
+            "da versão nova e instale manualmente.")
 
     def _on_progress(self, pct: int):
         self._progress.setValue(pct)
