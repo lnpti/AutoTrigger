@@ -108,6 +108,7 @@ DEFAULT_GLOBAL = {
     "start_minimized": False,   # abre direto na bandeja, sem mostrar a janela
     "keep_alive": False,        # reabre sozinho se o app fechar sem pedido (ver keepalive.py)
     "resume_window_seconds": 180,  # retoma a sequência interrompida por queda se o app voltar em até isso (0 = não retoma)
+    "streams": [],              # streamings cadastrados [{"id","name","url"}]: as etapas de stream apontam para eles
     "txt_file_path": "",
     "default_input_device_id": "",
     "default_input_device_name": "",
@@ -121,6 +122,39 @@ DEFAULT_GLOBAL = {
 
 def _new_id() -> str:
     return str(uuid.uuid4())[:8]
+
+
+def resolve_stream(step: dict, streams) -> tuple:
+    """(url, nome do cadastro) de uma etapa de streaming.
+
+    A etapa guarda o `stream_id` de um streaming cadastrado (trocar a URL no
+    cadastro vale para todas as etapas). Se o id não existe mais, ou a etapa é
+    antiga/manual, vale a URL salva na própria etapa e o nome vem vazio."""
+    sid = step.get("stream_id")
+    if sid:
+        for s in streams or []:
+            if s.get("id") == sid and str(s.get("url", "")).strip():
+                return str(s["url"]).strip(), str(s.get("name", ""))
+    return str(step.get("url", "") or "").strip(), ""
+
+
+def _guess_stream_name(step: dict, url: str, taken: set) -> str:
+    """Nome para um streaming cadastrado a partir de uma etapa antiga: o rótulo
+    ("Streaming - Gaúcha" -> "Gaúcha") ou, na falta dele, o endereço do servidor."""
+    from urllib.parse import urlparse
+    label = (step.get("label") or "").strip()
+    name = ""
+    if " - " in label and label.lower().startswith("stream"):
+        name = label.split(" - ", 1)[1].strip()
+    if not name and label and label.lower() not in ("stream", "streaming"):
+        name = label
+    if not name:
+        name = urlparse(url).netloc or url[:30]
+    base, n = name, 2
+    while name.lower() in taken:
+        name = f"{base} {n}"
+        n += 1
+    return name
 
 
 def _migrate_v1(old: dict) -> dict:
@@ -202,11 +236,44 @@ class Config:
                 pass
             return
         self._data = loaded
-        self._ensure_global_defaults()
+        if self._ensure_global_defaults():
+            try:   # grava a migração dos streamings já na primeira abertura
+                self.save()
+            except Exception:
+                pass
 
-    def _ensure_global_defaults(self):
+    def _migrate_streams(self) -> bool:
+        """Etapas de stream antigas (só com `url`) viram streamings cadastrados:
+        URLs iguais compartilham UM cadastro e a etapa passa a apontar para ele
+        (`stream_id`). Idempotente. Retorna True se mudou algo."""
+        g = self._data.setdefault("global", {})
+        streams = g.setdefault("streams", [])
+        by_url = {str(s.get("url", "")).strip(): s for s in streams}
+        taken = {str(s.get("name", "")).lower() for s in streams}
+        changed = False
+        for seq in self._data.get("sequences", []):
+            for step in seq.get("steps", []):
+                if step.get("type") != "stream":
+                    continue
+                url = str(step.get("url", "") or "").strip()
+                if step.get("stream_id") or not url:
+                    continue
+                entry = by_url.get(url)
+                if entry is None:
+                    entry = {"id": _new_id(), "name": _guess_stream_name(step, url, taken),
+                             "url": url}
+                    streams.append(entry)
+                    by_url[url] = entry
+                    taken.add(entry["name"].lower())
+                step["stream_id"] = entry["id"]
+                step["stream_name"] = entry["name"]
+                changed = True
+        return changed
+
+    def _ensure_global_defaults(self) -> bool:
         """Preenche chaves de 'global' ausentes (ex.: bloco 'email' em configs
-        gravadas antes desta versão), sem sobrescrever valores existentes."""
+        gravadas antes desta versão), sem sobrescrever valores existentes.
+        Retorna True se migrou streamings (o chamador pode querer salvar)."""
         g = self._data.setdefault("global", {})
         for key, default in DEFAULT_GLOBAL.items():
             if key not in g:
@@ -238,6 +305,7 @@ class Config:
         tg_events = telegram.setdefault("events", dict(DEFAULT_TELEGRAM["events"]))
         for key, default in DEFAULT_TELEGRAM["events"].items():
             tg_events.setdefault(key, default)
+        return self._migrate_streams()
 
     def _read_file(self, path: str):
         if not os.path.exists(path):
@@ -373,6 +441,27 @@ class Config:
             self._data["sequences"] = incoming["sequences"]
             self._ensure_global_defaults()
         else:
+            # Streamings do arquivo que ainda não existem aqui entram no cadastro
+            # (mesma URL = reaproveita o que já existe e religa as etapas a ele).
+            cur_streams = self._data.setdefault("global", {}).setdefault("streams", [])
+            by_id = {s.get("id"): s for s in cur_streams}
+            by_url = {str(s.get("url", "")).strip(): s for s in cur_streams}
+            remap = {}
+            for s in (incoming["global"].get("streams") or []):
+                url = str(s.get("url", "")).strip()
+                if not url or s.get("id") in by_id:
+                    continue
+                if url in by_url:
+                    remap[s.get("id")] = by_url[url]["id"]
+                    continue
+                new = {"id": s.get("id") or _new_id(), "name": s.get("name", ""), "url": url}
+                cur_streams.append(new)
+                by_id[new["id"]] = new
+                by_url[url] = new
+            for sq in incoming["sequences"]:
+                for st in sq.get("steps", []):
+                    if st.get("stream_id") in remap:
+                        st["stream_id"] = remap[st["stream_id"]]
             existing_ids = {sq["id"] for sq in self._data.get("sequences", [])}
             existing_names = {sq.get("name", "") for sq in self._data.get("sequences", [])}
             for sq in incoming["sequences"]:
@@ -384,6 +473,7 @@ class Config:
                     sq["name"] = f"{sq['name']} (importada)"
                 existing_names.add(sq["name"])
                 self._data.setdefault("sequences", []).append(sq)
+            self._migrate_streams()
         self.save()
         return {"mode": mode, "sequences": len(incoming["sequences"]), "backup": backup}
 

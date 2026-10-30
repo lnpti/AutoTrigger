@@ -248,7 +248,9 @@ class SequenceDetail(QWidget):
         v.addStretch(1)
 
         # Página 1 — editor de etapa
-        self._editor = StepEditor(on_done=self._step_editor_done)
+        self._editor = StepEditor(
+            on_done=self._step_editor_done,
+            streams_provider=lambda: self._config.get_global().get("streams", []))
         self._stack.addWidget(self._editor)
 
     # ── load ─────────────────────────────────────────────────────────────────────
@@ -661,7 +663,8 @@ def _summary(step: dict) -> str:
         from step_runner import step_gain_db
         db = step_gain_db(step)
         gain = f" · {db:+.1f} dB" if db else ""
-        return f"{step.get('url','')[:22]} · {fmt_secs(step.get('duration_seconds',0))}{gain}"
+        what = step.get("stream_name") or step.get("url", "")[:22]
+        return f"{what} · {fmt_secs(step.get('duration_seconds',0))}{gain}"
     if t == "wait_time":
         return fmt_secs(step.get("seconds", 0))
     if t == "wait_keyword":

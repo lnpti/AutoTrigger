@@ -80,15 +80,19 @@ STEP_TYPES = [
 _TYPE_LABELS = {t: lbl for t, lbl in STEP_TYPES}
 _LABEL_TO_TYPE = {lbl: t for t, lbl in STEP_TYPES}
 _MISSING_PREFIX = "⚠ "   # item do combo p/ dispositivo salvo que não existe neste PC
+_MANUAL_STREAM = "✏  Outra URL (digitar)"
 
 
 class StepEditor(QWidget):
     # emitido pela thread de captura → atualiza o campo na GUI thread
     _hotkey_captured = Signal(str)
 
-    def __init__(self, on_done: Callable[[Optional[dict]], None]):
+    def __init__(self, on_done: Callable[[Optional[dict]], None],
+                 streams_provider: Optional[Callable[[], list]] = None):
         super().__init__()
         self._on_done = on_done
+        self._streams_provider = streams_provider or (lambda: [])
+        self._streams: list = []
         self._step: dict = {}
         self._devices: list = []
         self._build()
@@ -242,9 +246,44 @@ class StepEditor(QWidget):
             self._add_label_row(s, default="Áudio")
 
         elif t == "stream":
+            self._streams = [x for x in (self._streams_provider() or [])
+                             if str(x.get("url", "")).strip()]
+            combo = QComboBox()
+            for st in self._streams:
+                combo.addItem(st.get("name") or st["url"], st["id"])
+            combo.addItem(_MANUAL_STREAM, "")
+            cur = combo.findData(s.get("stream_id")) if s.get("stream_id") else -1
+            if cur >= 0:
+                combo.setCurrentIndex(cur)
+            elif s.get("url") or not self._streams:
+                combo.setCurrentIndex(combo.count() - 1)   # URL manual (ou cadastro removido)
+            self._w["stream"] = combo
+            self._form.addRow(_lbl("Streaming"), form_field(combo))
+            hint = QLabel("")
+            hint.setObjectName("dim")
+            hint.setWordWrap(True)
+            self._form.addRow(QLabel(""), hint)
             url = QLineEdit(s.get("url", ""))
+            url.setPlaceholderText("https://…/stream.m3u")
             self._w["url"] = url
-            self._form.addRow(_lbl("URL"), form_field(url))
+            url_lbl, url_host = _lbl("URL"), form_field(url)
+            self._form.addRow(url_lbl, url_host)
+
+            def _sync_stream(_=0):
+                sid = combo.currentData()
+                manual = not sid
+                url_lbl.setVisible(manual)
+                url_host.setVisible(manual)
+                if manual:
+                    hint.setText("" if self._streams else
+                                 "Cadastre streamings em Configurações Globais para reutilizá-los "
+                                 "em várias etapas.")
+                else:
+                    st = next((x for x in self._streams if x["id"] == sid), None)
+                    hint.setText(str(st["url"]) if st else "")
+
+            combo.currentIndexChanged.connect(_sync_stream)
+            _sync_stream()
             dur = TimeField(int(s.get("duration_seconds", 300)))
             self._w["dur"] = dur
             self._form.addRow(_lbl("Duração"), dur)
@@ -345,10 +384,20 @@ class StepEditor(QWidget):
             step["file"] = w["file"].text().strip()
             step["label"] = label or "Áudio"
         elif t == "stream":
-            step["url"] = w["url"].text().strip()
+            sid = w["stream"].currentData()
+            st = next((x for x in self._streams if x["id"] == sid), None) if sid else None
+            if st:
+                # Escolheu um streaming cadastrado: a etapa guarda o id (a URL vem do
+                # cadastro na hora de rodar) e uma cópia do nome/URL como reserva.
+                step["stream_id"] = st["id"]
+                step["stream_name"] = st.get("name", "")
+                step["url"] = str(st["url"]).strip()
+            else:
+                step["url"] = w["url"].text().strip()
             step["duration_seconds"] = w["dur"].seconds()
             step["gain_db"] = round(w["volume"].value(), 1)
-            step["label"] = label or "Stream"
+            step["label"] = label or (f"Streaming - {step['stream_name']}"
+                                      if step.get("stream_name") else "Stream")
         elif t == "wait_time":
             step["seconds"] = w["secs"].seconds()
             step["label"] = label or "Aguardar"

@@ -1,3 +1,23 @@
+## AutoTrigger V10 — v2.3.27
+
+### Cadastro de streamings
+
+- Nova seção **Streamings cadastrados** em Configurações Globais: cadastre cada
+  streaming (nome + URL) **uma vez**.
+- Na etapa de **Streaming** de qualquer sequência, escolha o streaming pelo nome na
+  lista e defina só o **tempo** e o **ganho**. Dá para continuar digitando uma URL
+  manual ("Outra URL").
+- **Trocar a URL no cadastro vale para todas as sequências** que usam aquele streaming,
+  na hora de rodar. Se você remover um cadastro, as etapas que o usavam continuam com
+  a última URL que ele tinha (e o log avisa).
+- As etapas que você já tem foram convertidas sozinhas na primeira abertura: URLs
+  iguais viram **um** cadastro compartilhado (o nome vem do rótulo, ex.: "Streaming -
+  Gaúcha" vira "Gaúcha"; renomeie à vontade). Nada precisa ser refeito.
+- O cadastro vai junto na exportação/importação de configurações; ao importar "só
+  adicionar as sequências", os streamings que faltam entram no cadastro.
+- O resumo da etapa na lista mostra o nome do streaming, e o log mostra
+  "[cadastro: nome]" quando a etapa usa um.
+
 ## AutoTrigger V10 — v2.3.26
 
 ### Duas sequências disparando juntas

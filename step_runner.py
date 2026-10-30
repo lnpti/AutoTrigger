@@ -15,6 +15,7 @@ import os
 
 import audio_manager as _audio
 import hotkey_sender as _hotkey
+from config import resolve_stream
 from player import db_to_percent, percent_to_db
 
 
@@ -162,7 +163,11 @@ class StepRunner:
         self, step: dict, stop_event: threading.Event, on_tick=None,
         preview_cap: int = 0,
     ) -> bool:
-        url = step.get("url", "")
+        streams = (self._global_provider() or {}).get("streams", [])
+        url, reg_name = resolve_stream(step, streams)
+        if step.get("stream_id") and not reg_name:
+            self._log("⚠ O streaming cadastrado desta etapa não existe mais — usando a "
+                      "última URL salva nela.", "warn")
         duration = int(step.get("duration_seconds", 300))
         if preview_cap:
             duration = min(duration, preview_cap)
@@ -173,7 +178,8 @@ class StepRunner:
         gain_db = step_gain_db(step)
         volume = db_to_percent(gain_db)
         gain_txt = f", ganho {gain_db:+.1f} dB" if gain_db else ""
-        self._log(f"Streaming: {label} ({duration}s{gain_txt})")
+        reg_txt = f" [cadastro: {reg_name}]" if reg_name else ""
+        self._log(f"Streaming: {label}{reg_txt} ({duration}s{gain_txt})")
         done_ev = threading.Event()
         self._player.set_on_finished(lambda: done_ev.set())
         if not self._player.play(url, duration_seconds=duration, volume=volume):

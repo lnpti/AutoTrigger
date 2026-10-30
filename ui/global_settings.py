@@ -5,7 +5,9 @@ TXT monitorado + dispositivos padrão. Salva no Config e dispara on_saved().
 """
 from __future__ import annotations
 
+import uuid
 from typing import Callable
+from urllib.parse import urlparse
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -137,6 +139,27 @@ class GlobalSettings(QWidget):
         root.addWidget(LabeledRow("Saída (player)", self._out_combo, label_w=120))
         root.addWidget(refresh, alignment=Qt.AlignLeft)
 
+        # ── Streamings cadastrados ─────────────────────────────────────────────
+        self._section_gap(root)
+        sec_st = QLabel("STREAMINGS CADASTRADOS")
+        sec_st.setObjectName("section")
+        root.addWidget(sec_st)
+        root.addWidget(_lbl_section(
+            "Cadastre cada streaming UMA vez e escolha o nome nas etapas de streaming "
+            "(lá você só define o tempo e o ganho). Trocar a URL aqui vale para todas as "
+            "sequências que usam esse streaming."))
+        self._st_box = QVBoxLayout()
+        self._st_box.setSpacing(6)
+        self._st_rows: list = []
+        root.addLayout(self._st_box)
+        add_st = QPushButton("＋  Adicionar streaming")
+        add_st.setObjectName("ghost")
+        add_st.clicked.connect(lambda: self._add_stream_row())
+        root.addWidget(add_st, alignment=Qt.AlignLeft)
+        root.addWidget(_lbl_section(
+            "Se você remover um streaming, as etapas que o usavam continuam com a última "
+            "URL que ele tinha."))
+
         # ── Alertas por email ──────────────────────────────────────────────────
         self._section_gap(root)
         sec_mail = QLabel("ALERTAS POR E-MAIL")
@@ -267,8 +290,57 @@ class GlobalSettings(QWidget):
         self._ml_enabled.setChecked(bool(ml.get("enabled", False)))
         self._ml_folder.setText(ml.get("folder", DEFAULT_MEDIALOG["folder"]))
         self._load_devices()
+        self._load_streams(g.get("streams", []) or [])
         self._load_email(g.get("email", {}) or {})
         self._load_telegram(g.get("telegram", {}) or {})
+
+    def _load_streams(self, streams: list):
+        for row in list(self._st_rows):
+            self._remove_stream_row(row)
+        for s in streams:
+            self._add_stream_row(s)
+        if not streams:
+            self._add_stream_row()   # começa com uma linha vazia pra preencher
+
+    def _add_stream_row(self, stream: dict | None = None):
+        row = _StreamRow(stream or {"id": "", "name": "", "url": ""}, on_remove=self._remove_stream_row)
+        self._st_rows.append(row)
+        self._st_box.addWidget(row)
+
+    def _remove_stream_row(self, row):
+        if row in self._st_rows:
+            self._st_rows.remove(row)
+        self._st_box.removeWidget(row)
+        row.deleteLater()
+
+    def _gather_streams(self) -> list:
+        """Streamings da tela. Mantém o id de quem já existia (as etapas apontam para
+        ele); linha sem URL é ignorada; nome vazio vira o endereço do servidor e
+        nomes repetidos ganham um número."""
+        out, taken = [], set()
+        for row in self._st_rows:
+            v = row.value()
+            if not v["url"]:
+                continue
+            name = v["name"] or urlparse(v["url"]).netloc or v["url"][:30]
+            base, n = name, 2
+            while name.lower() in taken:
+                name = f"{base} {n}"
+                n += 1
+            taken.add(name.lower())
+            out.append({"id": v["id"] or uuid.uuid4().hex[:8], "name": name, "url": v["url"]})
+        return out
+
+    def _sync_steps_with_streams(self, streams: list):
+        """Atualiza, nas etapas que usam um streaming cadastrado, o nome e a URL
+        guardados nelas (valem como reserva se o cadastro for removido)."""
+        by_id = {s["id"]: s for s in streams}
+        for seq in self._config.get_sequences():
+            for step in seq.get("steps", []):
+                s = by_id.get(step.get("stream_id"))
+                if s:
+                    step["url"] = s["url"]
+                    step["stream_name"] = s["name"]
 
     def _load_email(self, e: dict):
         self._mail_enabled.setChecked(bool(e.get("enabled", False)))
@@ -560,6 +632,8 @@ class GlobalSettings(QWidget):
                 break
         g["email"] = self._gather_email_cfg()
         g["telegram"] = self._gather_telegram_cfg()
+        g["streams"] = self._gather_streams()
+        self._sync_steps_with_streams(g["streams"])
         self._config.update_global(g)
         self._config.save()
         self._on_saved()
@@ -570,6 +644,30 @@ def _lbl_section(text: str) -> QLabel:
     lab.setObjectName("muted")
     lab.setWordWrap(True)
     return lab
+
+
+class _StreamRow(QWidget):
+    """Uma linha de streaming cadastrado: [nome] [URL] [remover]. Guarda o id."""
+
+    def __init__(self, stream: dict, on_remove: Callable):
+        super().__init__()
+        self._id = stream.get("id", "")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+        self._name = QLineEdit(stream.get("name", ""))
+        self._name.setPlaceholderText("nome (ex.: Gaúcha)")
+        self._url = QLineEdit(stream.get("url", ""))
+        self._url.setPlaceholderText("https://…/stream.m3u")
+        rm = QPushButton("✕"); rm.setObjectName("icon_danger")
+        rm.setToolTip("Remover streaming")
+        rm.clicked.connect(lambda: on_remove(self))
+        lay.addWidget(self._name, 1)
+        lay.addWidget(self._url, 3)
+        lay.addWidget(rm)
+
+    def value(self) -> dict:
+        return {"id": self._id, "name": self._name.text().strip(), "url": self._url.text().strip()}
 
 
 class _TgContactRow(QWidget):
