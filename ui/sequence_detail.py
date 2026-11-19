@@ -673,6 +673,15 @@ def _summary(step: dict) -> str:
         except ValueError:
             what = "?"
         return f"{'LIGAR' if step.get('action') == 'on' else 'DESLIGAR'} · {what}"
+    if t == "x32_watch":
+        import x32
+        try:
+            a = x32.target_label("ch", int(step.get("watch_number", 1) or 1))
+            b = x32.target_label(step.get("target", "ch"), int(step.get("number", 1) or 1))
+        except ValueError:
+            return "?"
+        return (f"{a} sem áudio {step.get('silence_seconds', 3):g}s → LIGAR {b} "
+                f"· até {fmt_secs(step.get('seconds', 0))}")
     if t == "wait_time":
         return fmt_secs(step.get("seconds", 0))
     if t == "wait_keyword":

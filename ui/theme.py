@@ -60,6 +60,7 @@ STEP_ICONS = {
     "wait_time":     "⏳",
     "wait_keyword":  "🔍",
     "x32_channel":   "🎚",
+    "x32_watch":     "👂",
 }
 
 

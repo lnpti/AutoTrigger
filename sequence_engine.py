@@ -26,6 +26,7 @@ class SequenceEngine:
         self._file_monitor = file_monitor
         self._step_runner = StepRunner(player)
         self._step_runner.set_global_provider(lambda: self._config.get_global())
+        self._step_runner.set_on_alert(self._on_step_alert)
         self._player = player
 
         self._runners: Dict[str, SequenceRunner] = {}
@@ -352,6 +353,23 @@ class SequenceEngine:
         tg_cfg = self._telegram_cfg()
         if (tg_cfg.get("enabled") and telegram_notifier.is_configured(tg_cfg)
                 and tg_cfg.get("events", {}).get("stream_reconnect")):
+            telegram_notifier.notify_async(
+                tg_cfg, telegram_notifier.with_location(f"{subject}\n{body}", self._location()),
+                log=self._log_fn)
+
+    def _on_step_alert(self, kind: str, subject: str, body: str):
+        """Alerta vindo de uma etapa (ex.: canal da X32 sem áudio -> reserva ligada).
+        Segue a mesma chave "Erros" do e-mail/Telegram: quem recebe falhas recebe isto."""
+        ts = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        body = f"{body} ({ts})"
+        email_cfg = self._email_cfg()
+        if (email_cfg.get("enabled") and emailer.is_configured(email_cfg)
+                and email_cfg.get("events", {}).get("error")):
+            s, b = emailer.with_location(subject, body, self._location())
+            emailer.notify_async(email_cfg, s, b, log=self._log_fn)
+        tg_cfg = self._telegram_cfg()
+        if (tg_cfg.get("enabled") and telegram_notifier.is_configured(tg_cfg)
+                and tg_cfg.get("events", {}).get("error")):
             telegram_notifier.notify_async(
                 tg_cfg, telegram_notifier.with_location(f"{subject}\n{body}", self._location()),
                 log=self._log_fn)

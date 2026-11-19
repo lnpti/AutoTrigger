@@ -1,4 +1,26 @@
-﻿## AutoTrigger V10 — v2.3.31
+## AutoTrigger V10 — v2.3.32
+
+### Nova etapa: Mesa X32 — vigiar canal (sem áudio → ligar outro)
+
+- Nova etapa **👂 Mesa X32 — vigiar canal**: durante a sequência, o app **ouve o nível
+  de áudio de um canal da X32 (canal A)**. Enquanto o A tiver áudio, nada acontece.
+  Se o A ficar **sem áudio** pelo tempo definido, o app **liga o canal B** escolhido
+  (canal, bus, DCA, Main…), que **fica ligado**, e a etapa termina.
+- Configurável: canal A (1–32), limite de silêncio em dB (padrão **-50 dB**), por
+  quanto tempo seguido (padrão **3 s**, de 0,5 a 600 s), canal B e por quanto tempo
+  vigiar. Se o tempo de vigia acabar sem o A falhar, nada é ligado.
+- **Alerta por Telegram e e-mail** (com o nome do local) quando o B é ligado, ou se
+  não foi possível ligá-lo (segue a opção "Erros" das notificações).
+- Botão **Testar medidor** no editor: lê o nível do canal por ~1,5 s (só leitura) para
+  conferir que a mesa está mandando o medidor.
+- Se a mesa não enviar o medidor (rede/IP/OSC), o app avisa no log e **não liga o B**
+  (sem medir, não decide). Uma queda curta, menor que o tempo definido, não dispara.
+- Depois de uma queda do app, a vigia volta só pelo tempo que faltava. No ensaio, só
+  registra o que faria. A etapa entra na exportação/importação de configuração.
+- Observação: o formato do medidor foi implementado conforme o protocolo OSC da X32
+  e testado em mesa simulada; confira com **Testar medidor** na sua mesa antes de usar.
+
+## AutoTrigger V10 — v2.3.31
 
 ### Nova etapa: Mesa X32 — ligar/desligar canal
 

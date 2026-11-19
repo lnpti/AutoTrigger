@@ -141,6 +141,13 @@ class SequenceRunner:
             self._log(f"🔁 [{i + 1}/{n}] {label}: retomando a espera por mais "
                       f"{fmt_secs(int(rem))}.", "warn")
             return {**step, "seconds": rem, "label": f"{label} (retomado)"}
+        if t == "x32_watch":
+            if rem is None or rem <= 0:
+                self._log(f"⏭ [{i + 1}/{n}] {label}: o tempo da vigia já teria acabado — seguindo.", "warn")
+                return None
+            self._log(f"🔁 [{i + 1}/{n}] {label}: retomando a vigia por mais "
+                      f"{fmt_secs(int(rem))}.", "warn")
+            return {**step, "seconds": rem, "label": f"{label} (retomado)"}
         if t == "play_audio":
             self._log(f"⏭ [{i + 1}/{n}] {label}: o áudio interrompido não é repetido — seguindo.", "warn")
             return None
@@ -221,7 +228,7 @@ class SequenceRunner:
             end_at = None
             if step.get("type") == "stream":
                 end_at = now + int(step.get("duration_seconds", 300))
-            elif step.get("type") == "wait_time":
+            elif step.get("type") in ("wait_time", "x32_watch"):
                 end_at = now + float(step.get("seconds", 0))
             self._report("step", i, step, end_at)
 

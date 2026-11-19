@@ -33,6 +33,7 @@ def step_gain_db(step: dict) -> float:
 class StepRunner:
     def __init__(self, player):
         self._player = player
+        self._on_alert = None                # fn(kind, assunto, texto) -> alertas (ver set_on_alert)
         self._global_provider = lambda: {}   # -> config global (ver set_global_provider)
         self._log = lambda msg, level="info": print(f"[StepRunner][{level}] {msg}")
 
@@ -68,6 +69,9 @@ class StepRunner:
 
         elif t == "x32_channel":
             return self._do_x32(step, dry_run=dry_run)
+
+        elif t == "x32_watch":
+            return self._do_x32_watch(step, stop_event, on_tick, dry_run=dry_run)
 
         elif t == "play_audio":
             return self._do_play_audio(step, stop_event, preview_cap=preview_cap)
@@ -139,6 +143,97 @@ class StepRunner:
             self._log(f"✗ Mesa X32: não consegui {'ligar' if on else 'desligar'} {label}: {detail}.",
                       "error")
         return True  # continua mesmo em falha (o log mostra o erro)
+
+    def _do_x32_watch(self, step: dict, stop_event: threading.Event, on_tick=None,
+                      dry_run: bool = False) -> bool:
+        """Vigia o áudio de um canal da X32 por `seconds`. Se o canal A ficar SEM áudio
+        (abaixo de `threshold_db`) por `silence_seconds` seguidos, LIGA o canal B
+        (`target`/`number`) -- e o B fica ligado. Se o A nunca falhar, só termina o tempo.
+        Falha de rede/medidor não liga nada (evita disparo falso) e não trava a sequência."""
+        cfg = (self._global_provider() or {}).get("x32", {}) or {}
+        host = str(cfg.get("host", "") or "").strip()
+        port = int(cfg.get("port", _x32.DEFAULT_PORT) or _x32.DEFAULT_PORT)
+        seconds = float(step.get("seconds", 0) or 0)
+        silence = max(0.5, float(step.get("silence_seconds", 3) or 3))
+        thr = float(step.get("threshold_db", -50) or -50)
+        watch_n = int(step.get("watch_number", 1) or 1)
+        kind = step.get("target", "ch")
+        number = int(step.get("number", 1) or 1)
+        try:
+            a_label = _x32.target_label("ch", watch_n)
+            b_label = _x32.target_label(kind, number)
+            _x32.meter_index("ch", watch_n)
+        except ValueError as exc:
+            self._log(f"Mesa X32: etapa de vigia inválida ({exc}).", "error")
+            return True
+        desc = (f"vigiar {a_label}; sem áudio (< {thr:g} dB) por {silence:g}s → ligar {b_label}"
+                f" (por até {int(seconds)}s)")
+        if dry_run:
+            self._log(f"[ENSAIO] Mesa X32: {desc} (sem efeito real)", "warn")
+            return True
+        if not host:
+            self._log("Mesa X32: informe o IP da mesa em Configurações Globais.", "error")
+            return True
+        self._log(f"Mesa X32 ({host}): {desc}")
+        try:
+            meter = _x32.MeterStream(host, port, "ch", watch_n)
+        except (ValueError, _x32.X32Error) as exc:
+            self._log(f"✗ Mesa X32: não consegui abrir o medidor: {exc}", "error")
+            return True
+        start = last_audio = last_data = time.time()
+        warned_no_data = False
+        peak_seen = None
+        try:
+            while not stop_event.is_set():
+                now = time.time()
+                elapsed = now - start
+                if elapsed >= seconds:
+                    self._log(f"Mesa X32: fim da vigia — {a_label} manteve o áudio; "
+                              f"{b_label} não foi ligado.")
+                    return True
+                db = meter.level_db(0.25)
+                now = time.time()
+                if db is not None:
+                    last_data = now
+                    warned_no_data = False
+                    peak_seen = db if peak_seen is None else max(peak_seen, db)
+                    if db > thr:
+                        last_audio = now
+                elif now - last_data >= 10 and not warned_no_data:
+                    warned_no_data = True
+                    self._log(f"✗ Mesa X32: sem dados do medidor de {a_label} há 10 s "
+                              f"(IP/rede/OSC?). Não ligo {b_label} sem medir.", "error")
+                if on_tick:
+                    on_tick(min(elapsed, seconds), seconds)
+                if db is not None and now - last_audio >= silence:
+                    self._log(f"⚠ Mesa X32: {a_label} sem áudio há {silence:g}s "
+                              f"(nível {db:.0f} dB) — ligando {b_label}.", "warn")
+                    ok, detail = _x32.set_channel(host, port, kind, number, True)
+                    if ok:
+                        self._log(f"✓ Mesa X32: {b_label} ligado ({detail}).", "success")
+                    else:
+                        self._log(f"✗ Mesa X32: não consegui ligar {b_label}: {detail}.", "error")
+                    self._alert("x32_failover",
+                                f"⚠ Canal sem áudio: {a_label}",
+                                f"{a_label} ficou {silence:g}s sem áudio; "
+                                + (f"{b_label} foi LIGADO." if ok else
+                                   f"NÃO consegui ligar {b_label} ({detail})."))
+                    return True
+                time.sleep(0.02)
+            return False
+        finally:
+            meter.close()
+
+    def _alert(self, kind: str, subject: str, body: str):
+        try:
+            if self._on_alert:
+                self._on_alert(kind, subject, body)
+        except Exception as exc:      # alerta nunca derruba a sequência
+            self._log(f"Falha ao enviar alerta: {exc}", "warn")
+
+    def set_on_alert(self, fn):
+        """fn(kind, assunto, texto): o engine envia por Telegram/e-mail."""
+        self._on_alert = fn
 
     def _default_device_for(self, device_id: str):
         """(id, nome) da placa padrão (entrada ou saída, conforme o ID salvo no

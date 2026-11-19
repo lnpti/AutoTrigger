@@ -76,6 +76,7 @@ STEP_TYPES = [
     ("play_audio",    "🎵  Tocar Áudio"),
     ("stream",        "📡  Streaming"),
     ("x32_channel",    "🎚  Mesa X32 — ligar/desligar canal"),
+    ("x32_watch",      "👂  Mesa X32 — vigiar canal (sem áudio → ligar outro)"),
     ("wait_time",     "⏳  Aguardar Tempo"),
     ("wait_keyword",  "🔍  Aguardar Keyword"),
 ]
@@ -89,6 +90,7 @@ class StepEditor(QWidget):
     # emitido pela thread de captura → atualiza o campo na GUI thread
     _hotkey_captured = Signal(str)
     _x32_name_ready = Signal(str)
+    _x32_meter_ready = Signal(str)
 
     def __init__(self, on_done: Callable[[Optional[dict]], None],
                  streams_provider: Optional[Callable[[], list]] = None,
@@ -103,6 +105,7 @@ class StepEditor(QWidget):
         self._build()
         self._hotkey_captured.connect(self._on_hotkey_captured)
         self._x32_name_ready.connect(self._on_x32_name)
+        self._x32_meter_ready.connect(self._on_x32_meter)
 
     # ── build ───────────────────────────────────────────────────────────────────
 
@@ -360,6 +363,67 @@ class StepEditor(QWidget):
             self._form.addRow("", hint)
             self._add_label_row(s, default="")
 
+        elif t == "x32_watch":
+            cfg = self._x32_provider() or {}
+            host = str(cfg.get("host", "") or "").strip()
+            # Canal A: o que é vigiado
+            a_host = QWidget(); a_l = QHBoxLayout(a_host)
+            a_l.setContentsMargins(0, 0, 0, 0)
+            a_num = QSpinBox(); a_num.setRange(1, _x32.max_number("ch")); a_num.setMaximumWidth(90)
+            a_num.setValue(int(s.get("watch_number", 1) or 1))
+            test = QPushButton("🔎  Testar medidor")
+            test.setObjectName("ghost")
+            test.setToolTip("Só LÊ o nível do canal por ~1,5 s (não altera nada na mesa). Deixe "
+                            "o canal com áudio para conferir.")
+            st_lbl = QLabel(""); st_lbl.setObjectName("dim")
+            a_l.addWidget(a_num); a_l.addWidget(test); a_l.addWidget(st_lbl, 1)
+            self._w["w_ch"] = a_num; self._w["w_status"] = st_lbl
+            self._form.addRow(_lbl("Canal vigiado (A)"), a_host)
+            a_num.valueChanged.connect(lambda _=0: st_lbl.setText(""))
+            test.clicked.connect(self._test_x32_meter)
+            thr = QDoubleSpinBox(); thr.setRange(-90.0, 0.0); thr.setDecimals(0)
+            thr.setSuffix(" dB"); thr.setMaximumWidth(110)
+            thr.setValue(float(s.get("threshold_db", -50) or -50))
+            self._w["w_thr"] = thr
+            self._form.addRow(_lbl("Silêncio abaixo de"), form_field(thr))
+            sil = QDoubleSpinBox(); sil.setRange(0.5, 600.0); sil.setDecimals(1); sil.setSingleStep(0.5)
+            sil.setSuffix(" s"); sil.setMaximumWidth(110)
+            sil.setValue(float(s.get("silence_seconds", 3) or 3))
+            self._w["w_sil"] = sil
+            self._form.addRow(_lbl("…por mais de"), form_field(sil))
+            # Canal B: o que liga
+            b_kind = QComboBox()
+            for k, (name, _mx, _a, _n) in _x32.TARGETS.items():
+                b_kind.addItem(name, k)
+            b_kind.setCurrentIndex(max(0, b_kind.findData(s.get("target", "ch"))))
+            self._w["w_kind"] = b_kind
+            self._form.addRow(_lbl("Aí ligar (B)"), form_field(b_kind))
+            b_num = QSpinBox(); b_num.setMaximumWidth(90)
+            self._w["w_num"] = b_num
+            b_num_lbl, b_num_host = _lbl("Número do B"), form_field(b_num)
+            self._form.addRow(b_num_lbl, b_num_host)
+
+            def _b_kind_changed(_=0):
+                mx = _x32.max_number(b_kind.currentData())
+                b_num_lbl.setVisible(mx > 0)
+                b_num_host.setVisible(mx > 0)
+                if mx > 0:
+                    b_num.setRange(1, mx)
+
+            b_kind.currentIndexChanged.connect(_b_kind_changed)
+            _b_kind_changed()
+            b_num.setValue(int(s.get("number", 1) or 1))
+            dur = TimeField(int(s.get("seconds", 600)))
+            self._w["w_dur"] = dur
+            self._form.addRow(_lbl("Vigiar por"), dur)
+            hint = QLabel(f"Mesa: {host or '⚠ configure o IP em Configurações Globais'}. Enquanto o "
+                          "A tiver áudio, o B não é ligado. Se o A ficar mudo pelo tempo "
+                          "indicado, o B é LIGADO e fica ligado. Se o tempo de vigia acabar sem "
+                          "o A falhar, nada é ligado.")
+            hint.setObjectName("dim"); hint.setWordWrap(True)
+            self._form.addRow("", hint)
+            self._add_label_row(s, default="")
+
         elif t == "wait_time":
             secs = TimeField(int(s.get("seconds", 60)))
             self._w["secs"] = secs
@@ -402,6 +466,33 @@ class StepEditor(QWidget):
                 self._x32_name_ready.emit(f"“{name}”" if name else "(canal sem nome na mesa)")
 
         threading.Thread(target=_run, daemon=True, name="x32-read-name").start()
+
+    def _test_x32_meter(self):
+        """Lê (só leitura) o nível do canal A por ~1,5 s, numa thread."""
+        cfg = self._x32_provider() or {}
+        host = str(cfg.get("host", "") or "").strip()
+        port = int(cfg.get("port", _x32.DEFAULT_PORT) or _x32.DEFAULT_PORT)
+        number = self._w["w_ch"].value()
+        if not host:
+            self._x32_meter_ready.emit("⚠ informe o IP da mesa em Configurações Globais")
+            return
+        self._w["w_status"].setText("lendo…")
+
+        def _run():
+            got = _x32.sample_meters(host, port, "ch", number, 1.5)
+            if got is None:
+                self._x32_meter_ready.emit("⚠ a mesa não mandou o medidor")
+            else:
+                peak, count = got
+                txt = "silêncio" if peak <= _x32.SILENCE_DB else f"pico {peak:.0f} dB"
+                self._x32_meter_ready.emit(f"{txt}  ({count} valores recebidos)")
+
+        threading.Thread(target=_run, daemon=True, name="x32-test-meter").start()
+
+    def _on_x32_meter(self, text: str):
+        lab = self._w.get("w_status")
+        if lab is not None:
+            lab.setText(text)
 
     def _on_x32_name(self, text: str):
         lab = self._w.get("x32_name")
@@ -490,6 +581,16 @@ class StepEditor(QWidget):
             step["number"] = w["x32_number"].value() if _x32.max_number(step["target"]) else 0
             what = _x32.target_label(step["target"], step["number"])
             step["label"] = label or f"{'Ligar' if step['action'] == 'on' else 'Desligar'} {what} (X32)"
+        elif t == "x32_watch":
+            step["watch_number"] = w["w_ch"].value()
+            step["threshold_db"] = int(round(w["w_thr"].value()))
+            step["silence_seconds"] = round(w["w_sil"].value(), 1)
+            step["target"] = w["w_kind"].currentData()
+            step["number"] = w["w_num"].value() if _x32.max_number(step["target"]) else 0
+            step["seconds"] = w["w_dur"].seconds()
+            a = _x32.target_label("ch", step["watch_number"])
+            b = _x32.target_label(step["target"], step["number"])
+            step["label"] = label or f"Vigiar {a} → ligar {b} (X32)"
         elif t == "wait_time":
             step["seconds"] = w["secs"].seconds()
             step["label"] = label or "Aguardar"
