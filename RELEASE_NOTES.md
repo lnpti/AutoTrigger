@@ -1,3 +1,21 @@
+## AutoTrigger V10 — v2.3.33
+
+### Mesa X32: fader em 0 dB ao ligar + botão de teste
+
+- **Ao ligar um canal, o app coloca o fader em 0 dB antes de ligar** (ligar um canal com
+  o fader no mínimo não adianta). Vale para a etapa "Mesa X32 — ligar/desligar canal"
+  (quando a ação é Ligar) e para o canal B da etapa "vigiar canal". O fader é ajustado
+  com o canal ainda mudo e só depois ele é ligado, sem estalo.
+- No editor das duas etapas há a linha **"Ao ligar, colocar o fader em [0 dB]"**: dá para
+  mudar o nível ou desmarcar. Etapas já salvas passam a usar 0 dB automaticamente.
+- Se a mesa não confirmar o ajuste do fader, o canal é ligado mesmo assim e o log avisa
+  ("ATENÇÃO: não consegui colocar o fader em 0 dB").
+- Novo botão **🧪 Testar liga/desliga** nas duas etapas: **mexe de verdade na mesa** (pede
+  confirmação): desliga o canal, liga com o fader no nível escolhido e **volta ao estado
+  original** (ligado/desligado e posição do fader). Se algo falhar no meio, tenta restaurar.
+  Se o canal estiver no ar, fica mudo por cerca de 2 s durante o teste.
+- O resumo da etapa mostra o nível ("LIGAR · Ch 03 · fader 0 dB") e o ensaio informa o fader.
+
 ## AutoTrigger V10 — v2.3.32
 
 ### Nova etapa: Mesa X32 — vigiar canal (sem áudio → ligar outro)

@@ -14,7 +14,8 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,
-    QComboBox, QPushButton, QFileDialog, QFrame, QDoubleSpinBox, QSpinBox,
+    QComboBox, QPushButton, QFileDialog, QFrame, QDoubleSpinBox, QSpinBox, QCheckBox,
+    QMessageBox,
 )
 
 
@@ -91,6 +92,7 @@ class StepEditor(QWidget):
     _hotkey_captured = Signal(str)
     _x32_name_ready = Signal(str)
     _x32_meter_ready = Signal(str)
+    _x32_toggle_ready = Signal(str)
 
     def __init__(self, on_done: Callable[[Optional[dict]], None],
                  streams_provider: Optional[Callable[[], list]] = None,
@@ -106,6 +108,7 @@ class StepEditor(QWidget):
         self._hotkey_captured.connect(self._on_hotkey_captured)
         self._x32_name_ready.connect(self._on_x32_name)
         self._x32_meter_ready.connect(self._on_x32_meter)
+        self._x32_toggle_ready.connect(self._on_x32_toggle)
 
     # ── build ───────────────────────────────────────────────────────────────────
 
@@ -357,6 +360,8 @@ class StepEditor(QWidget):
             check.clicked.connect(self._read_x32_name)
             _kind_changed()
             num.setValue(int(s.get("number", 1) or 1))
+            self._add_x32_fader_and_test(s, "x32_kind", "x32_number",
+                                         lambda: act.currentData() == "on")
             hint = QLabel(f"Mesa: {host or '⚠ configure o IP em Configurações Globais'}. "
                           "'Desligar' muta o canal (botão ON apagado); 'Ligar' reabre.")
             hint.setObjectName("dim"); hint.setWordWrap(True)
@@ -413,6 +418,7 @@ class StepEditor(QWidget):
             b_kind.currentIndexChanged.connect(_b_kind_changed)
             _b_kind_changed()
             b_num.setValue(int(s.get("number", 1) or 1))
+            self._add_x32_fader_and_test(s, "w_kind", "w_num", lambda: True)
             dur = TimeField(int(s.get("seconds", 600)))
             self._w["w_dur"] = dur
             self._form.addRow(_lbl("Vigiar por"), dur)
@@ -466,6 +472,78 @@ class StepEditor(QWidget):
                 self._x32_name_ready.emit(f"“{name}”" if name else "(canal sem nome na mesa)")
 
         threading.Thread(target=_run, daemon=True, name="x32-read-name").start()
+
+    def _add_x32_fader_and_test(self, s: dict, kind_key: str, num_key: str, show_fader):
+        """Linha "Fader ao ligar" (padrão 0 dB) + botão "Testar liga/desliga" da etapa
+        X32. `kind_key`/`num_key`: widgets do alvo que será ligado/desligado."""
+        chk = QCheckBox("Ao ligar, colocar o fader em")
+        chk.setChecked(bool(s.get("set_fader", True)))
+        chk.setToolTip("Ligar um canal com o fader no mínimo não adianta: o app coloca o fader "
+                       "no nível indicado (0 dB = unitário) ANTES de ligar.")
+        spin = QDoubleSpinBox()
+        spin.setRange(-90.0, 10.0); spin.setDecimals(1); spin.setSingleStep(0.5)
+        spin.setSuffix(" dB"); spin.setMaximumWidth(110)
+        try:
+            spin.setValue(float(s.get("fader_db", 0.0)))
+        except (TypeError, ValueError):
+            spin.setValue(0.0)
+        spin.setEnabled(chk.isChecked())
+        chk.toggled.connect(spin.setEnabled)
+        fader_host = QWidget(); fl = QHBoxLayout(fader_host)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.addWidget(chk); fl.addWidget(spin); fl.addStretch(1)
+        self._w["fader_on"], self._w["fader_db"] = chk, spin
+        self._form.addRow(_lbl("Fader"), fader_host)
+        test = QPushButton("🧪  Testar liga/desliga")
+        test.setObjectName("ghost")
+        test.setToolTip("MEXE NA MESA: desliga o canal, liga (com o fader no nível acima), e "
+                        "volta ao estado em que estava. Se o canal estiver no ar, ele fica "
+                        "mudo por ~2 s.")
+        status = QLabel(""); status.setObjectName("dim"); status.setWordWrap(True)
+        test_host = QWidget(); tl = QHBoxLayout(test_host)
+        tl.setContentsMargins(0, 0, 0, 0)
+        tl.addWidget(test); tl.addWidget(status, 1)
+        self._w["x32_toggle_status"] = status
+        self._form.addRow(_lbl("Teste"), test_host)
+        test.clicked.connect(lambda _=False: self._test_x32_toggle(kind_key, num_key))
+
+    def _confirm_x32_test(self, label: str) -> bool:
+        r = QMessageBox.question(
+            self, "Testar liga/desliga",
+            f"O teste vai DESLIGAR {label} na mesa por ~2 s, depois LIGAR e voltar ao estado "
+            f"original.\n\nSe esse canal estiver no ar, ele ficará mudo por um instante. "
+            f"Continuar?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        return r == QMessageBox.Yes
+
+    def _test_x32_toggle(self, kind_key: str, num_key: str):
+        """Testa de verdade (na mesa): desliga, liga (fader em N dB) e restaura."""
+        cfg = self._x32_provider() or {}
+        host = str(cfg.get("host", "") or "").strip()
+        port = int(cfg.get("port", _x32.DEFAULT_PORT) or _x32.DEFAULT_PORT)
+        kind = self._w[kind_key].currentData()
+        number = self._w[num_key].value() if _x32.max_number(kind) else 0
+        status = self._w["x32_toggle_status"]
+        if not host:
+            status.setText("⚠ informe o IP da mesa em Configurações Globais")
+            return
+        label = _x32.target_label(kind, number)
+        if not self._confirm_x32_test(label):
+            return
+        fader_db = self._w["fader_db"].value() if self._w["fader_on"].isChecked() else None
+        status.setText("testando…")
+
+        def _run():
+            ok, text = _x32.test_toggle(host, port, kind, number, fader_db, hold=1.0,
+                                        report=lambda t: self._x32_toggle_ready.emit(t))
+            self._x32_toggle_ready.emit(("✓ " if ok else "✗ ") + text)
+
+        threading.Thread(target=_run, daemon=True, name="x32-test-toggle").start()
+
+    def _on_x32_toggle(self, text: str):
+        lab = self._w.get("x32_toggle_status")
+        if lab is not None:
+            lab.setText(text)
 
     def _test_x32_meter(self):
         """Lê (só leitura) o nível do canal A por ~1,5 s, numa thread."""
@@ -580,6 +658,8 @@ class StepEditor(QWidget):
             step["target"] = w["x32_kind"].currentData()
             step["number"] = w["x32_number"].value() if _x32.max_number(step["target"]) else 0
             what = _x32.target_label(step["target"], step["number"])
+            step["set_fader"] = w["fader_on"].isChecked()
+            step["fader_db"] = round(w["fader_db"].value(), 1)
             step["label"] = label or f"{'Ligar' if step['action'] == 'on' else 'Desligar'} {what} (X32)"
         elif t == "x32_watch":
             step["watch_number"] = w["w_ch"].value()
@@ -588,6 +668,8 @@ class StepEditor(QWidget):
             step["target"] = w["w_kind"].currentData()
             step["number"] = w["w_num"].value() if _x32.max_number(step["target"]) else 0
             step["seconds"] = w["w_dur"].seconds()
+            step["set_fader"] = w["fader_on"].isChecked()
+            step["fader_db"] = round(w["fader_db"].value(), 1)
             a = _x32.target_label("ch", step["watch_number"])
             b = _x32.target_label(step["target"], step["number"])
             step["label"] = label or f"Vigiar {a} → ligar {b} (X32)"

@@ -672,7 +672,10 @@ def _summary(step: dict) -> str:
             what = x32.target_label(step.get("target", "ch"), int(step.get("number", 1) or 1))
         except ValueError:
             what = "?"
-        return f"{'LIGAR' if step.get('action') == 'on' else 'DESLIGAR'} · {what}"
+        from step_runner import step_fader_db
+        fd = step_fader_db(step) if step.get("action") == "on" else None
+        return (f"{'LIGAR' if step.get('action') == 'on' else 'DESLIGAR'} · {what}"
+                + (f" · fader {fd:g} dB" if fd is not None else ""))
     if t == "x32_watch":
         import x32
         try:

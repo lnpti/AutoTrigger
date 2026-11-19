@@ -206,21 +206,161 @@ def set_int(host: str, port: int, address: str, value: int, timeout: float = 0.8
         sock.close()
 
 
+def set_float(host: str, port: int, address: str, value: float, timeout: float = 0.8,
+              retries: int = 3, tol: float = 0.004) -> bool:
+    """Grava um float (0..1) e CONFIRMA (eco ou leitura de volta, com tolerância)."""
+    def _same(got):
+        return (got is not None and got[:1] and isinstance(got[0], (int, float))
+                and abs(float(got[0]) - float(value)) <= tol)
+    sock = _open(host)
+    try:
+        for _ in range(max(1, retries)):
+            try:
+                sock.sendto(osc_message(address, float(value)), (host, int(port)))
+            except (OSError, UnicodeError) as exc:
+                raise X32Error(f"não consegui falar com '{host}': {exc}")
+            if _same(_wait(sock, address, timeout)):
+                return True
+            try:
+                sock.sendto(osc_message(address), (host, int(port)))
+            except OSError:
+                continue
+            if _same(_wait(sock, address, timeout)):
+                return True
+        return False
+    finally:
+        sock.close()
+
+
+# ── fader (volume) ───────────────────────────────────────────────────────────────
+# O fader da X32 é um float 0..1 com curva própria: 0.0 = -infinito, 0.75 = 0 dB, 1.0 = +10 dB.
+
+def db_to_fader(db: float) -> float:
+    db = max(-90.0, min(10.0, float(db)))
+    if db >= -10:
+        f = (db + 30.0) / 40.0
+    elif db >= -30:
+        f = (db + 50.0) / 80.0
+    elif db >= -60:
+        f = (db + 70.0) / 160.0
+    else:
+        f = (db + 90.0) / 480.0
+    return max(0.0, min(1.0, f))
+
+
+def fader_to_db(f: float) -> float:
+    f = max(0.0, min(1.0, float(f)))
+    if f >= 0.5:
+        return f * 40.0 - 30.0
+    if f >= 0.25:
+        return f * 80.0 - 50.0
+    if f >= 0.0625:
+        return f * 160.0 - 70.0
+    return f * 480.0 - 90.0 if f > 0 else -90.0
+
+
+def fader_address(kind: str, number: int) -> str:
+    """Endereço OSC do fader do alvo ("/ch/05/mix/fader", "/dca/2/fader")."""
+    return target_address(kind, number)[:-2] + "fader"      # troca o "on" final por "fader"
+
+
 def set_channel(host: str, port: int, kind: str, number: int, on: bool,
-                timeout: float = 0.8, retries: int = 3) -> tuple:
-    """Liga (on=True) ou desliga/muta (on=False) o alvo. (ok, detalhe)."""
+                timeout: float = 0.8, retries: int = 3, fader_db: float | None = None) -> tuple:
+    """Liga (on=True) ou desliga/muta (on=False) o alvo. (ok, detalhe).
+
+    Ao LIGAR com `fader_db` (ex.: 0.0), primeiro coloca o fader nesse nível (com o canal
+    ainda mudo, sem estalo) e só depois liga: ligar um canal com o fader no mínimo não
+    adianta. Se só o ajuste do fader falhar, liga mesmo assim e avisa no detalhe (ATENÇÃO).
+    """
     host = (host or "").strip()
     if not host:
         return False, "IP da mesa não configurado"
+    port = port or DEFAULT_PORT
     try:
         address = target_address(kind, number)
-        if set_int(host, port or DEFAULT_PORT, address, 1 if on else 0, timeout, retries):
-            return True, "confirmado pela mesa"
+        warn = ""
+        fader_txt = ""
+        if on and fader_db is not None:
+            if set_float(host, port, fader_address(kind, number), db_to_fader(fader_db), timeout, retries):
+                fader_txt = f", fader em {fader_db:g} dB"
+            else:
+                warn = f"; ATENÇÃO: não consegui colocar o fader em {fader_db:g} dB"
+        if set_int(host, port, address, 1 if on else 0, timeout, retries):
+            return True, "confirmado pela mesa" + fader_txt + warn
         return False, f"a mesa em {host}:{port} não respondeu (IP, rede ou OSC desligado?)"
     except ValueError as exc:
         return False, str(exc)
     except X32Error as exc:
         return False, str(exc)
+
+
+def get_state(host: str, port: int, kind: str, number: int, timeout: float = 0.8,
+              retries: int = 2) -> dict | None:
+    """Estado atual do alvo: {"on": 0/1, "fader": float 0..1 ou None}; None se a mesa não respondeu."""
+    host = (host or "").strip()
+    if not host:
+        return None
+    try:
+        on = query(host, port or DEFAULT_PORT, target_address(kind, number), timeout, retries)
+        if not on or not isinstance(on[0], int):
+            return None
+        fd = query(host, port or DEFAULT_PORT, fader_address(kind, number), timeout, retries)
+    except (ValueError, X32Error):
+        return None
+    fader = float(fd[0]) if fd and isinstance(fd[0], (int, float)) else None
+    return {"on": int(on[0]), "fader": fader}
+
+
+def test_toggle(host: str, port: int, kind: str, number: int, fader_db: float | None,
+                hold: float = 1.5, report=None) -> tuple:
+    """Teste de ligar/desligar PELO APP: guarda o estado, DESLIGA, espera `hold` s, LIGA
+    (com o fader em `fader_db`, se dado), espera `hold` s e VOLTA ao estado original (ligado/
+    desligado e posição do fader). Mesmo se algo falhar no meio, tenta restaurar.
+    Devolve (ok, texto). `report(texto)` recebe o andamento."""
+    say = report or (lambda _t: None)
+    host = (host or "").strip()
+    if not host:
+        return False, "informe o IP da mesa em Configurações Globais"
+    port = port or DEFAULT_PORT
+    try:
+        label = target_label(kind, number)
+    except ValueError as exc:
+        return False, str(exc)
+    orig = get_state(host, port, kind, number)
+    if orig is None:
+        return False, f"a mesa em {host}:{port} não respondeu"
+    steps = []
+    ok = True
+    try:
+        say(f"desligando {label}…")
+        good, why = set_channel(host, port, kind, number, False)
+        if not good:
+            return False, f"não consegui desligar {label}: {why}"
+        steps.append("desligou")
+        time.sleep(hold)
+        say(f"ligando {label}" + (f" em {fader_db:g} dB…" if fader_db is not None else "…"))
+        good, why = set_channel(host, port, kind, number, True, fader_db=fader_db)
+        if not good:
+            ok = False
+            return False, f"desligou, mas não consegui ligar {label}: {why}"
+        steps.append("ligou" + (f" com o fader em {fader_db:g} dB" if fader_db is not None else ""))
+        if "ATENÇÃO" in why:
+            ok = False
+            steps[-1] += " (⚠ fader não confirmado)"
+        time.sleep(hold)
+    finally:
+        # volta ao que estava (mesmo em falha): fader e ligado/desligado
+        try:
+            if fader_db is not None and orig.get("fader") is not None:
+                set_float(host, port, fader_address(kind, number), orig["fader"])
+            if not orig["on"]:
+                set_int(host, port, target_address(kind, number), 0)
+            elif steps and steps[0] == "desligou" and len(steps) == 1:
+                set_int(host, port, target_address(kind, number), 1)   # falhou no meio: reabre
+        except (ValueError, X32Error):
+            pass
+    estado = "ligado" if orig["on"] else "desligado"
+    return ok, f"{label}: " + ", ".join(steps) + f" — voltou ao estado original ({estado})"
 
 
 def read_name(host: str, port: int, kind: str, number: int, timeout: float = 0.8,

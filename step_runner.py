@@ -30,6 +30,18 @@ def step_gain_db(step: dict) -> float:
     return 0.0
 
 
+def step_fader_db(step: dict):
+    """Nível do fader (dB) a colocar ao LIGAR um canal da X32, ou None se desativado.
+    Padrão: 0 dB (ligar um canal com o fader no mínimo não adianta) -- vale também
+    para etapas salvas antes deste ajuste."""
+    if not step.get("set_fader", True):
+        return None
+    try:
+        return max(-90.0, min(10.0, float(step.get("fader_db", 0.0))))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class StepRunner:
     def __init__(self, player):
         self._player = player
@@ -128,7 +140,10 @@ class StepRunner:
         except ValueError as exc:
             self._log(f"Mesa X32: etapa inválida ({exc}).", "error")
             return True
+        fader_db = step_fader_db(step) if on else None
         verb = "LIGAR" if on else "DESLIGAR (mutar)"
+        if fader_db is not None:
+            verb += f" com o fader em {fader_db:g} dB"
         if dry_run:
             self._log(f"[ENSAIO] Mesa X32: {verb} {label} (sem efeito real)", "warn")
             return True
@@ -136,9 +151,10 @@ class StepRunner:
             self._log("Mesa X32: informe o IP da mesa em Configurações Globais.", "error")
             return True
         self._log(f"Mesa X32 ({host}): {verb} {label}")
-        ok, detail = _x32.set_channel(host, port, kind, number, on)
+        ok, detail = _x32.set_channel(host, port, kind, number, on, fader_db=fader_db)
         if ok:
-            self._log(f"✓ Mesa X32: {label} {'ligado' if on else 'desligado'} ({detail}).", "success")
+            self._log(f"✓ Mesa X32: {label} {'ligado' if on else 'desligado'} ({detail}).",
+                      "warn" if "ATENÇÃO" in detail else "success")
         else:
             self._log(f"✗ Mesa X32: não consegui {'ligar' if on else 'desligar'} {label}: {detail}.",
                       "error")
@@ -166,8 +182,10 @@ class StepRunner:
         except ValueError as exc:
             self._log(f"Mesa X32: etapa de vigia inválida ({exc}).", "error")
             return True
+        fd = step_fader_db(step)
         desc = (f"vigiar {a_label}; sem áudio (< {thr:g} dB) por {silence:g}s → ligar {b_label}"
-                f" (por até {int(seconds)}s)")
+                + (f" com o fader em {fd:g} dB" if fd is not None else "")
+                + f" (por até {int(seconds)}s)")
         if dry_run:
             self._log(f"[ENSAIO] Mesa X32: {desc} (sem efeito real)", "warn")
             return True
@@ -208,9 +226,11 @@ class StepRunner:
                 if db is not None and now - last_audio >= silence:
                     self._log(f"⚠ Mesa X32: {a_label} sem áudio há {silence:g}s "
                               f"(nível {db:.0f} dB) — ligando {b_label}.", "warn")
-                    ok, detail = _x32.set_channel(host, port, kind, number, True)
+                    ok, detail = _x32.set_channel(host, port, kind, number, True,
+                                                  fader_db=step_fader_db(step))
                     if ok:
-                        self._log(f"✓ Mesa X32: {b_label} ligado ({detail}).", "success")
+                        self._log(f"✓ Mesa X32: {b_label} ligado ({detail}).",
+                                  "warn" if "ATENÇÃO" in detail else "success")
                     else:
                         self._log(f"✗ Mesa X32: não consegui ligar {b_label}: {detail}.", "error")
                     self._alert("x32_failover",
