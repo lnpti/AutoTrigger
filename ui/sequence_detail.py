@@ -250,7 +250,8 @@ class SequenceDetail(QWidget):
         # Página 1 — editor de etapa
         self._editor = StepEditor(
             on_done=self._step_editor_done,
-            streams_provider=lambda: self._config.get_global().get("streams", []))
+            streams_provider=lambda: self._config.get_global().get("streams", []),
+            x32_provider=lambda: self._config.get_global().get("x32", {}))
         self._stack.addWidget(self._editor)
 
     # ── load ─────────────────────────────────────────────────────────────────────
@@ -665,6 +666,13 @@ def _summary(step: dict) -> str:
         gain = f" · {db:+.1f} dB" if db else ""
         what = step.get("stream_name") or step.get("url", "")[:22]
         return f"{what} · {fmt_secs(step.get('duration_seconds',0))}{gain}"
+    if t == "x32_channel":
+        import x32
+        try:
+            what = x32.target_label(step.get("target", "ch"), int(step.get("number", 1) or 1))
+        except ValueError:
+            what = "?"
+        return f"{'LIGAR' if step.get('action') == 'on' else 'DESLIGAR'} · {what}"
     if t == "wait_time":
         return fmt_secs(step.get("seconds", 0))
     if t == "wait_keyword":

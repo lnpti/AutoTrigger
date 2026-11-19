@@ -15,6 +15,7 @@ import os
 
 import audio_manager as _audio
 import hotkey_sender as _hotkey
+import x32 as _x32
 from config import resolve_stream
 from player import db_to_percent, percent_to_db
 
@@ -65,6 +66,9 @@ class StepRunner:
         elif t == "hotkey":
             return self._do_hotkey(step, dry_run=dry_run)
 
+        elif t == "x32_channel":
+            return self._do_x32(step, dry_run=dry_run)
+
         elif t == "play_audio":
             return self._do_play_audio(step, stop_event, preview_cap=preview_cap)
 
@@ -105,6 +109,36 @@ class StepRunner:
         self._log(f"{action}: {name}")
         _audio.set_device_mute(target_id, mute, target_name)
         return True  # continua mesmo em falha de mute
+
+    def _do_x32(self, step: dict, dry_run: bool = False) -> bool:
+        """Liga/desliga (muta) um canal da mesa X32 por OSC. Falha não interrompe a
+        sequência (como o mute de placa), mas aparece no log como erro."""
+        cfg = (self._global_provider() or {}).get("x32", {}) or {}
+        host = str(cfg.get("host", "") or "").strip()
+        port = int(cfg.get("port", _x32.DEFAULT_PORT) or _x32.DEFAULT_PORT)
+        kind = step.get("target", "ch")
+        number = int(step.get("number", 1) or 1)
+        on = step.get("action", "off") == "on"
+        try:
+            label = _x32.target_label(kind, number)
+        except ValueError as exc:
+            self._log(f"Mesa X32: etapa inválida ({exc}).", "error")
+            return True
+        verb = "LIGAR" if on else "DESLIGAR (mutar)"
+        if dry_run:
+            self._log(f"[ENSAIO] Mesa X32: {verb} {label} (sem efeito real)", "warn")
+            return True
+        if not host:
+            self._log("Mesa X32: informe o IP da mesa em Configurações Globais.", "error")
+            return True
+        self._log(f"Mesa X32 ({host}): {verb} {label}")
+        ok, detail = _x32.set_channel(host, port, kind, number, on)
+        if ok:
+            self._log(f"✓ Mesa X32: {label} {'ligado' if on else 'desligado'} ({detail}).", "success")
+        else:
+            self._log(f"✗ Mesa X32: não consegui {'ligar' if on else 'desligar'} {label}: {detail}.",
+                      "error")
+        return True  # continua mesmo em falha (o log mostra o erro)
 
     def _default_device_for(self, device_id: str):
         """(id, nome) da placa padrão (entrada ou saída, conforme o ID salvo no

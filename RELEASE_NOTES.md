@@ -1,3 +1,19 @@
+﻿## AutoTrigger V10 — v2.3.31
+
+### Nova etapa: Mesa X32 — ligar/desligar canal
+
+- Nova etapa **🎚 Mesa X32 — ligar/desligar canal**: a sequência se conecta à mesa
+  Behringer X32 / Midas M32 pela rede (OSC, porta 10023) e **liga ou desliga
+  (muta) um canal** na hora certa. Alvos: canal 1–32, Aux In, Retorno FX, Bus,
+  Matrix, DCA, Main LR e Main Mono.
+- O IP e a porta da mesa ficam em Configurações Globais, na seção **Mesa X32**,
+  com o botão **Testar conexão** (mostra modelo e firmware da mesa).
+- No editor da etapa, **"Ler o nome na mesa"** mostra o nome do canal escolhido
+  (só leitura, não altera nada na mesa).
+- Cada comando é **confirmado pela mesa** (e repetido se o pacote UDP se perder).
+  Se a mesa não responder, o erro aparece no log/alertas e **a sequência continua**.
+- No **ensaio** a etapa só registra o que faria, sem enviar nada para a mesa.
+- O IP da mesa e as etapas entram na exportação/importação de configuração.
 ## AutoTrigger V10 — v2.3.30
 
 ### Atualização automática de madrugada

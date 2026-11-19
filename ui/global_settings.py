@@ -5,6 +5,7 @@ TXT monitorado + dispositivos padrão. Salva no Config e dispara on_saved().
 """
 from __future__ import annotations
 
+import threading
 import uuid
 from typing import Callable
 from urllib.parse import urlparse
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
 
 import audio_manager as _audio
 import emailer
+import x32 as _x32
 import startup
 import telegram_notifier
 from config import DEFAULT_MEDIALOG
@@ -188,6 +190,31 @@ class GlobalSettings(QWidget):
             "Se você remover um streaming, as etapas que o usavam continuam com a última "
             "URL que ele tinha."))
 
+        # ── Mesa X32 ───────────────────────────────────────────────────────────
+        self._section_gap(root)
+        sec_x32 = QLabel("MESA X32 (ETAPAS DE LIGAR/DESLIGAR CANAL)")
+        sec_x32.setObjectName("section")
+        root.addWidget(sec_x32)
+        self._x32_host = QLineEdit()
+        self._x32_host.setPlaceholderText("IP da mesa, ex.: 192.168.0.50")
+        self._x32_port = QSpinBox()
+        self._x32_port.setRange(1, 65535)
+        self._x32_port.setMaximumWidth(100)
+        x32_test = QPushButton("🔌  Testar conexão")
+        x32_test.setObjectName("ghost")
+        x32_test.setToolTip("Só pergunta a identificação da mesa (não altera nada).")
+        x32_test.clicked.connect(self._test_x32)
+        x32_host_box = QWidget(); x32_l = QHBoxLayout(x32_host_box)
+        x32_l.setContentsMargins(0, 0, 0, 0)
+        x32_l.addWidget(self._x32_host, 1)
+        x32_l.addWidget(QLabel("porta"))
+        x32_l.addWidget(self._x32_port)
+        x32_l.addWidget(x32_test)
+        root.addWidget(LabeledRow("Mesa (IP)", x32_host_box, label_w=120))
+        root.addWidget(_lbl_section(
+            "Usada pelas etapas \"Mesa X32 — ligar/desligar canal\". Compatível com Behringer "
+            "X32 e Midas M32 (OSC, porta 10023). A mesa precisa estar na mesma rede."))
+
         # ── Alertas por email ──────────────────────────────────────────────────
         self._section_gap(root)
         sec_mail = QLabel("ALERTAS POR E-MAIL")
@@ -322,8 +349,31 @@ class GlobalSettings(QWidget):
         self._ml_folder.setText(ml.get("folder", DEFAULT_MEDIALOG["folder"]))
         self._load_devices()
         self._load_streams(g.get("streams", []) or [])
+        x = g.get("x32", {}) or {}
+        self._x32_host.setText(str(x.get("host", "") or ""))
+        self._x32_port.setValue(int(x.get("port", _x32.DEFAULT_PORT) or _x32.DEFAULT_PORT))
         self._load_email(g.get("email", {}) or {})
         self._load_telegram(g.get("telegram", {}) or {})
+
+    def _test_x32(self):
+        """Pergunta /info à mesa (só leitura), numa thread; o resultado vai para o log."""
+        host = self._x32_host.text().strip()
+        port = self._x32_port.value()
+        if not host:
+            self._log("🎚 Informe o IP da mesa antes de testar.", "warn")
+            return
+        self._log(f"🎚 Testando a mesa em {host}:{port}…", "info")
+
+        def _run():
+            i = _x32.info(host, port)
+            if i:
+                self._log(f"🎚 ✓ Mesa respondeu: {i['model']} ({i['server']}), firmware {i['firmware']}.",
+                          "success")
+            else:
+                self._log(f"🎚 ✗ A mesa em {host}:{port} não respondeu (IP, rede ou porta errados?).",
+                          "error")
+
+        threading.Thread(target=_run, daemon=True, name="x32-test").start()
 
     def _load_streams(self, streams: list):
         for row in list(self._st_rows):
@@ -667,6 +717,7 @@ class GlobalSettings(QWidget):
         g["email"] = self._gather_email_cfg()
         g["telegram"] = self._gather_telegram_cfg()
         g["streams"] = self._gather_streams()
+        g["x32"] = {"host": self._x32_host.text().strip(), "port": self._x32_port.value()}
         self._sync_steps_with_streams(g["streams"])
         self._config.update_global(g)
         self._config.save()

@@ -1,11 +1,11 @@
-; ============================================================
+﻿; ============================================================
 ;  AutoTrigger V10 — Inno Setup Script  (by RobsonDV)
 ;  Para compilar: build_installer.bat
 ;  Ou manualmente: ISCC.exe installer.iss
 ; ============================================================
 
 #define AppName    "AutoTrigger V10"
-#define AppVersion "2.3.30"
+#define AppVersion "2.3.31"
 #define AppPublisher "RobsonDV"
 #define AppURL     "https://github.com/lnpti/AutoTrigger"
 #define AppExe     "AutoTriggerV10.exe"

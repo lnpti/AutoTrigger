@@ -14,7 +14,7 @@ from typing import Callable, Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit,
-    QComboBox, QPushButton, QFileDialog, QFrame, QDoubleSpinBox,
+    QComboBox, QPushButton, QFileDialog, QFrame, QDoubleSpinBox, QSpinBox,
 )
 
 
@@ -60,6 +60,7 @@ class WindowCombo(QComboBox):
 
 import audio_manager as _audio
 import hotkey_sender as _hotkey
+import x32 as _x32
 from player import GAIN_DB_MIN, GAIN_DB_MAX
 from step_runner import step_gain_db
 from timeparse import parse_secs, fmt_secs
@@ -74,6 +75,7 @@ STEP_TYPES = [
     ("hotkey",        "⌨  Enviar Hotkey"),
     ("play_audio",    "🎵  Tocar Áudio"),
     ("stream",        "📡  Streaming"),
+    ("x32_channel",    "🎚  Mesa X32 — ligar/desligar canal"),
     ("wait_time",     "⏳  Aguardar Tempo"),
     ("wait_keyword",  "🔍  Aguardar Keyword"),
 ]
@@ -86,17 +88,21 @@ _MANUAL_STREAM = "✏  Outra URL (digitar)"
 class StepEditor(QWidget):
     # emitido pela thread de captura → atualiza o campo na GUI thread
     _hotkey_captured = Signal(str)
+    _x32_name_ready = Signal(str)
 
     def __init__(self, on_done: Callable[[Optional[dict]], None],
-                 streams_provider: Optional[Callable[[], list]] = None):
+                 streams_provider: Optional[Callable[[], list]] = None,
+                 x32_provider: Optional[Callable[[], dict]] = None):
         super().__init__()
         self._on_done = on_done
         self._streams_provider = streams_provider or (lambda: [])
+        self._x32_provider = x32_provider or (lambda: {})
         self._streams: list = []
         self._step: dict = {}
         self._devices: list = []
         self._build()
         self._hotkey_captured.connect(self._on_hotkey_captured)
+        self._x32_name_ready.connect(self._on_x32_name)
 
     # ── build ───────────────────────────────────────────────────────────────────
 
@@ -303,6 +309,57 @@ class StepEditor(QWidget):
             self._form.addRow(_lbl("Ganho de volume"), vol_host)
             self._add_label_row(s, default="Stream")
 
+        elif t == "x32_channel":
+            cfg = self._x32_provider() or {}
+            host = str(cfg.get("host", "") or "").strip()
+            act = QComboBox()
+            act.addItem("Desligar o canal (mutar)", "off")
+            act.addItem("Ligar o canal", "on")
+            act.setCurrentIndex(max(0, act.findData(s.get("action", "off"))))
+            self._w["x32_action"] = act
+            self._form.addRow(_lbl("Ação"), form_field(act))
+            kind = QComboBox()
+            for k, (name, _mx, _a, _n) in _x32.TARGETS.items():
+                kind.addItem(name, k)
+            kind.setCurrentIndex(max(0, kind.findData(s.get("target", "ch"))))
+            self._w["x32_kind"] = kind
+            self._form.addRow(_lbl("Tipo"), form_field(kind))
+            num_host = QWidget(); num_l = QHBoxLayout(num_host)
+            num_l.setContentsMargins(0, 0, 0, 0)
+            num = QSpinBox()
+            num.setMaximumWidth(90)
+            self._w["x32_number"] = num
+            check = QPushButton("🔎  Ler o nome na mesa")
+            check.setObjectName("ghost")
+            check.setToolTip("Só LÊ o nome do canal na mesa (não altera nada) para você "
+                             "conferir que é o canal certo.")
+            name_lbl = QLabel("")
+            name_lbl.setObjectName("dim")
+            self._w["x32_name"] = name_lbl
+            num_l.addWidget(num); num_l.addWidget(check); num_l.addWidget(name_lbl, 1)
+            self._num_row_label = _lbl("Número")
+            self._form.addRow(self._num_row_label, num_host)
+            self._x32_num_host = num_host
+
+            def _kind_changed(_=0):
+                mx = _x32.max_number(kind.currentData())
+                self._num_row_label.setVisible(mx > 0)
+                num_host.setVisible(mx > 0)
+                if mx > 0:
+                    num.setRange(1, mx)
+                name_lbl.setText("")
+
+            kind.currentIndexChanged.connect(_kind_changed)
+            num.valueChanged.connect(lambda _=0: name_lbl.setText(""))
+            check.clicked.connect(self._read_x32_name)
+            _kind_changed()
+            num.setValue(int(s.get("number", 1) or 1))
+            hint = QLabel(f"Mesa: {host or '⚠ configure o IP em Configurações Globais'}. "
+                          "'Desligar' muta o canal (botão ON apagado); 'Ligar' reabre.")
+            hint.setObjectName("dim"); hint.setWordWrap(True)
+            self._form.addRow("", hint)
+            self._add_label_row(s, default="")
+
         elif t == "wait_time":
             secs = TimeField(int(s.get("seconds", 60)))
             self._w["secs"] = secs
@@ -321,6 +378,35 @@ class StepEditor(QWidget):
         self._form.addRow(_lbl("Rótulo"), form_field(lbl))
 
     # ── actions ────────────────────────────────────────────────────────────────────
+
+    def _read_x32_name(self):
+        """Lê (só leitura) o nome do canal na mesa, numa thread para não travar a tela."""
+        cfg = self._x32_provider() or {}
+        host = str(cfg.get("host", "") or "").strip()
+        port = int(cfg.get("port", _x32.DEFAULT_PORT) or _x32.DEFAULT_PORT)
+        kind = self._w["x32_kind"].currentData()
+        number = self._w["x32_number"].value()
+        if not host:
+            self._x32_name_ready.emit("⚠ informe o IP da mesa em Configurações Globais")
+            return
+        self._w["x32_name"].setText("lendo…")
+
+        def _run():
+            name = _x32.read_name(host, port, kind, number)
+            if name is None:
+                if _x32.name_address(kind, number) == "":
+                    self._x32_name_ready.emit("(este tipo não tem nome para ler)")
+                else:
+                    self._x32_name_ready.emit("⚠ a mesa não respondeu")
+            else:
+                self._x32_name_ready.emit(f"“{name}”" if name else "(canal sem nome na mesa)")
+
+        threading.Thread(target=_run, daemon=True, name="x32-read-name").start()
+
+    def _on_x32_name(self, text: str):
+        lab = self._w.get("x32_name")
+        if lab is not None:
+            lab.setText(text)
 
     def _capture_hotkey(self):
         hk_widget = self._w.get("hotkey")
@@ -398,6 +484,12 @@ class StepEditor(QWidget):
             step["gain_db"] = round(w["volume"].value(), 1)
             step["label"] = label or (f"Streaming - {step['stream_name']}"
                                       if step.get("stream_name") else "Stream")
+        elif t == "x32_channel":
+            step["action"] = w["x32_action"].currentData()
+            step["target"] = w["x32_kind"].currentData()
+            step["number"] = w["x32_number"].value() if _x32.max_number(step["target"]) else 0
+            what = _x32.target_label(step["target"], step["number"])
+            step["label"] = label or f"{'Ligar' if step['action'] == 'on' else 'Desligar'} {what} (X32)"
         elif t == "wait_time":
             step["seconds"] = w["secs"].seconds()
             step["label"] = label or "Aguardar"

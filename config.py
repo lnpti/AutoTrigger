@@ -104,12 +104,18 @@ DEFAULT_MEDIALOG = {
     "folder": r"C:\KL AV Systems\V10 Player Network\V10MediaLog",
 }
 
+DEFAULT_X32 = {
+    "host": "",     # IP da mesa Behringer X32 / Midas M32 (etapas "Mesa X32")
+    "port": 10023,  # porta OSC da X32
+}
+
 DEFAULT_GLOBAL = {
     "start_minimized": False,   # abre direto na bandeja, sem mostrar a janela
     "keep_alive": False,        # reabre sozinho se o app fechar sem pedido (ver keepalive.py)
     "resume_window_seconds": 180,  # retoma a sequência interrompida por queda se o app voltar em até isso (0 = não retoma)
     "streams": [],              # streamings cadastrados [{"id","name","url"}]: as etapas de stream apontam para eles
     "location": "",             # nome/descrição do local deste app: abre cada alerta de Telegram e e-mail
+    "x32": copy.deepcopy(DEFAULT_X32),
     "auto_update": True,        # procura e instala versão nova sozinho de madrugada (ver auto_update.py)
     "auto_update_hour": 4,      # hora (0-23) em que começa a janela de 2 h da atualização automática
     "txt_file_path": "",
@@ -281,6 +287,9 @@ class Config:
         for key, default in DEFAULT_GLOBAL.items():
             if key not in g:
                 g[key] = copy.deepcopy(default)
+        x32cfg = g.setdefault("x32", copy.deepcopy(DEFAULT_X32))
+        for key, default in DEFAULT_X32.items():
+            x32cfg.setdefault(key, default)
         medialog = g.setdefault("medialog", copy.deepcopy(DEFAULT_MEDIALOG))
         for key, default in DEFAULT_MEDIALOG.items():
             medialog.setdefault(key, default)
