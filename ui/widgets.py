@@ -35,6 +35,57 @@ def form_field(widget: QWidget) -> QWidget:
     return host
 
 
+def shrinkable(widget: QWidget) -> QWidget:
+    """Deixa um widget de texto longo (ex.: QCheckBox) encolher com a janela em vez de exigir
+    a largura do texto inteiro -- sem isso a página ganha rolagem horizontal e corta o resto."""
+    widget.setSizePolicy(QSizePolicy.Ignored, widget.sizePolicy().verticalPolicy())
+    widget.setMinimumWidth(0)
+    return widget
+
+
+class ElidedLabel(QLabel):
+    """Rótulo de UMA linha que encolhe junto com a janela: o texto que não cabe vira "…"
+    (o texto inteiro fica no tooltip). Um QLabel comum exige a largura do texto inteiro e
+    empurra a página para fora da tela (barra de rolagem horizontal, botões cortados)."""
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(parent)
+        self._full = ""
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setMinimumWidth(0)
+        self.setText(text)
+
+    def setText(self, text: str):
+        self._full = text or ""
+        self.setToolTip(self._full)
+        self._refit()
+
+    def text(self) -> str:
+        return self._full
+
+    def sizeHint(self):
+        sh = super().sizeHint()
+        sh.setWidth(self.fontMetrics().horizontalAdvance(self._full) + 4)
+        return sh
+
+    def minimumSizeHint(self):
+        sh = super().minimumSizeHint()
+        sh.setWidth(0)
+        return sh
+
+    def _refit(self):
+        w = self.width()
+        shown = self._full
+        if w > 20:   # antes de aparecer a largura ainda não é a final
+            shown = self.fontMetrics().elidedText(self._full, Qt.ElideRight, w)
+        if shown != QLabel.text(self):
+            QLabel.setText(self, shown)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._refit()
+
+
 def drag_handle() -> QLabel:
     """Alça de arraste ("≡") -- só ela inicia o arrastar-e-soltar da linha/
     card, pra clique em qualquer outro ponto não mover nada por engano."""

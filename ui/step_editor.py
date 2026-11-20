@@ -128,6 +128,10 @@ class StepEditor(QWidget):
         lab.setFixedWidth(110)
         self._type_combo = QComboBox()
         self._type_combo.addItems([lbl for _, lbl in STEP_TYPES])
+        # a lista tem rótulos longos: sem isto a combo exige a largura do maior e a página
+        # estoura a janela (rolagem horizontal)
+        self._type_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self._type_combo.setMinimumContentsLength(12)
         self._type_combo.currentIndexChanged.connect(self._rebuild_fields)
         type_row.addWidget(lab)
         type_row.addWidget(self._type_combo, 1)

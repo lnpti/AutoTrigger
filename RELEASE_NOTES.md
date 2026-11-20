@@ -1,3 +1,22 @@
+## AutoTrigger V10 — v2.3.34
+
+### Tela inteira na janela
+
+- Corrige a página inicial (detalhe da sequência) que ficava **mais larga que a janela**,
+  com barra de rolagem horizontal e botões cortados ("Adicionar etapa", "Duplicar",
+  "Excluir"). O que causava:
+  - os textos das etapas não encolhiam: agora o que não cabe vira "…" (o texto completo
+    aparece ao passar o mouse);
+  - **Duplicar** e **Excluir** foram para o cabeçalho, ao lado do nome;
+  - a opção "Deixar o áudio terminar antes de contar o atraso" agora encolhe com a janela.
+- **Editor de etapa:** a lista de tipos de etapa exigia ~720 px de largura por causa dos nomes
+  longos; agora cabe na janela.
+- **Configurações Globais:** os eventos de e-mail/Telegram passaram a ficar em duas colunas,
+  os botões viraram "Exportar…" e "Importar…" e os textos longos quebram linha, para a página
+  caber sem rolagem horizontal.
+- A janela passou a ter largura mínima de 1000 px (antes 880), para nenhuma página estourar.
+- O botão **Testar liga/desliga** da Mesa X32 continua como na versão anterior.
+
 ## AutoTrigger V10 — v2.3.33
 
 ### Mesa X32: fader em 0 dB ao ligar + botão de teste

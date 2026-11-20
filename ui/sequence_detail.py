@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from timeparse import fmt_secs, WEEKDAY_LABELS, is_armed_today
 from ui.theme import COLORS, STEP_ICONS, STATE_COLORS
-from ui.widgets import TimeField, StatusDot, Chip, hline, drag_handle, DragList
+from ui.widgets import TimeField, StatusDot, Chip, hline, drag_handle, DragList, ElidedLabel, shrinkable
 from ui.step_editor import StepEditor, _TYPE_LABELS
 
 _STEP_BG = {"pending": COLORS["bg1"], "active": "#0d2a52",
@@ -174,8 +174,10 @@ class SequenceDetail(QWidget):
         self._del_seq_btn.setObjectName("danger")
         self._del_seq_btn.setToolTip("Excluir esta sequência")
         self._del_seq_btn.clicked.connect(self._delete)
-        actions.addWidget(self._dup_btn)
-        actions.addWidget(self._del_seq_btn)
+        # Duplicar/Excluir ficam no cabeçalho (ao lado do nome): na linha de ações somavam
+        # ~750 px e empurravam a página para fora da janela (botões cortados).
+        head.addWidget(self._dup_btn)
+        head.addWidget(self._del_seq_btn)
         v.addLayout(actions)
 
         v.addWidget(hline())
@@ -204,6 +206,7 @@ class SequenceDetail(QWidget):
         self._delay.changed.connect(self._save_fields_debounced)
         grid.addWidget(self._delay, 2, 1)
         self._audio_end = QCheckBox("Deixar o áudio terminar antes de contar o atraso")
+        shrinkable(self._audio_end)
         self._audio_end.setToolTip(
             "Só vale quando o gatilho vem do log do player: o disparo acontece "
             "quando o áudio entra no ar; a sequência espera ele acabar (tempo "
@@ -375,9 +378,9 @@ class SequenceDetail(QWidget):
         lay.addWidget(num); lay.addWidget(ic)
 
         info = QVBoxLayout(); info.setSpacing(0)
-        label = QLabel(step.get("label") or step.get("type", "?"))
+        label = ElidedLabel(step.get("label") or step.get("type", "?"))
         label.setStyleSheet("font-weight:600;")
-        sub = QLabel(f"{_TYPE_LABELS.get(step.get('type',''),'')}  ·  {_summary(step)}")
+        sub = ElidedLabel(f"{_TYPE_LABELS.get(step.get('type',''),'')}  ·  {_summary(step)}")
         sub.setObjectName("dim")
         info.addWidget(label); info.addWidget(sub)
         lay.addLayout(info, 1)

@@ -138,7 +138,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("AutoTrigger V10")
         self.resize(1040, 720)
-        self.setMinimumSize(880, 560)
+        self.setMinimumSize(1000, 560)
         ico = _asset_icon()
         if ico:
             self.setWindowIcon(ico)

@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QComboBox, QPushButton, QFileDialog, QCheckBox, QSpinBox, QMessageBox,
+    QComboBox, QPushButton, QFileDialog, QCheckBox, QSpinBox, QMessageBox, QGridLayout,
 )
 
 import audio_manager as _audio
@@ -23,7 +23,7 @@ import startup
 import telegram_notifier
 from config import DEFAULT_MEDIALOG
 from ui.theme import COLORS
-from ui.widgets import hline, LabeledRow
+from ui.widgets import hline, LabeledRow, shrinkable
 
 # Cache de dispositivos no nível do módulo (evita re-enumerar a cada abertura)
 _DEV_CACHE = {"inputs": None, "outputs": None}
@@ -84,7 +84,7 @@ class GlobalSettings(QWidget):
         self._boot_min.setToolTip(
             "Ao abrir, o app vai direto para o ícone da bandeja, sem mostrar a "
             "janela. Clique no ícone (ou reabra o atalho) para ver a janela.")
-        self._keep_alive = QCheckBox("Manter sempre rodando (reabrir sozinho se fechar)")
+        self._keep_alive = shrinkable(QCheckBox("Manter sempre rodando (reabrir sozinho se fechar)"))
         self._keep_alive.setToolTip(
             "Se o app fechar sem você pedir (queda, 'Finalizar tarefa'...), ele é "
             "reaberto sozinho em alguns segundos. Para sair de verdade, use 'Sair' "
@@ -92,7 +92,9 @@ class GlobalSettings(QWidget):
             "marque 'Iniciar com o Windows'.")
         resume_host = QWidget(); resume_l = QHBoxLayout(resume_host)
         resume_l.setContentsMargins(0, 0, 0, 0)
-        resume_l.addWidget(QLabel("Se o app cair no meio de uma sequência, retomá-la se ele voltar em até"))
+        resume_lbl = QLabel("Se o app cair no meio de uma sequência, retomá-la se ele voltar em até")
+        resume_lbl.setWordWrap(True)
+        resume_l.addWidget(resume_lbl, 1)
         self._resume_min = QSpinBox()
         self._resume_min.setRange(0, 60)
         self._resume_min.setSuffix(" min")
@@ -140,7 +142,7 @@ class GlobalSettings(QWidget):
         sec_ml = QLabel("LOG DO PLAYER (V10 PLAYER NETWORK)")
         sec_ml.setObjectName("section")
         root.addWidget(sec_ml)
-        self._ml_enabled = QCheckBox("Disparar sequências pelos áudios executados no player")
+        self._ml_enabled = shrinkable(QCheckBox("Disparar sequências pelos áudios executados no player"))
         root.addWidget(self._ml_enabled)
         ml_host = QWidget(); ml_l = QHBoxLayout(ml_host)
         ml_l.setContentsMargins(0, 0, 0, 0)
@@ -253,15 +255,16 @@ class GlobalSettings(QWidget):
         root.addWidget(LabeledRow("Remetente", self._mail_from, label_w=120))
         root.addWidget(LabeledRow("Destinatários", self._mail_to, label_w=120))
 
-        ev_box = QWidget(); ev_l = QHBoxLayout(ev_box)
+        # 2 colunas (em linha só, os 4 somavam ~780 px e a página estourava a janela)
+        ev_box = QWidget(); ev_l = QGridLayout(ev_box)
         ev_l.setContentsMargins(0, 0, 0, 0)
         self._ev_start = QCheckBox("Início")
         self._ev_done = QCheckBox("Fim")
         self._ev_error = QCheckBox("Erro/cancelamento")
         self._ev_stream = QCheckBox("Queda/reconexão de stream")
-        for cb in (self._ev_start, self._ev_done, self._ev_error, self._ev_stream):
-            ev_l.addWidget(cb)
-        ev_l.addStretch(1)
+        for i, cb in enumerate((self._ev_start, self._ev_done, self._ev_error, self._ev_stream)):
+            ev_l.addWidget(cb, i // 2, i % 2)
+        ev_l.setColumnStretch(2, 1)
         root.addWidget(_lbl_section("Eventos que disparam e-mail"))
         root.addWidget(ev_box)
 
@@ -295,15 +298,16 @@ class GlobalSettings(QWidget):
         add_contact.clicked.connect(lambda: self._add_tg_contact())
         root.addWidget(add_contact, alignment=Qt.AlignLeft)
 
-        tg_ev_box = QWidget(); tg_ev_l = QHBoxLayout(tg_ev_box)
+        tg_ev_box = QWidget(); tg_ev_l = QGridLayout(tg_ev_box)
         tg_ev_l.setContentsMargins(0, 0, 0, 0)
         self._tg_ev_start = QCheckBox("Início")
         self._tg_ev_done = QCheckBox("Fim")
         self._tg_ev_error = QCheckBox("Erro/cancelamento")
         self._tg_ev_stream = QCheckBox("Queda/reconexão de stream")
-        for cb in (self._tg_ev_start, self._tg_ev_done, self._tg_ev_error, self._tg_ev_stream):
-            tg_ev_l.addWidget(cb)
-        tg_ev_l.addStretch(1)
+        for i, cb in enumerate((self._tg_ev_start, self._tg_ev_done, self._tg_ev_error,
+                                self._tg_ev_stream)):
+            tg_ev_l.addWidget(cb, i // 2, i % 2)
+        tg_ev_l.setColumnStretch(2, 1)
         root.addWidget(_lbl_section("Eventos que disparam Telegram"))
         root.addWidget(tg_ev_box)
 
@@ -314,13 +318,13 @@ class GlobalSettings(QWidget):
         root.addStretch(1)
 
         btns = QHBoxLayout()
-        export = QPushButton("📤  Exportar configurações…")
+        export = QPushButton("📤  Exportar…")
         export.setObjectName("ghost")
         export.setToolTip("Salva todas as configurações e sequências num arquivo .json "
                           "(o que está SALVO — clique em Salvar antes se alterou algo).")
         export.clicked.connect(self._export_config)
         btns.addWidget(export)
-        imp = QPushButton("📥  Importar configurações…")
+        imp = QPushButton("📥  Importar…")
         imp.setObjectName("ghost")
         imp.setToolTip("Carrega configurações e sequências de um arquivo .json "
                        "exportado antes (substituindo tudo ou só adicionando as sequências).")
