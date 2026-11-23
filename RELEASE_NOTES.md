@@ -1,3 +1,18 @@
+## AutoTrigger V10 — v2.3.35
+
+### Atualização que não falha mais quando o Windows limpa a pasta temporária
+
+- Corrige a atualização que falhava com **"não foi possível preparar a instalação
+  ([Errno 2] No such file or directory: ...\_MEIxxxx\base_library.zip)"**. O `.exe` guarda
+  suas bibliotecas numa pasta temporária (`_MEI...`); uma limpeza de temporários (Windows
+  ou antivírus) pode apagá-la com o app aberto, e o app falhava ao carregar algo depois.
+- O atualizador agora grava o script de instalação **sem depender dessa pasta**, e o app
+  **carrega no início** o que só usaria mais tarde.
+- Se a pasta temporária sumir com o app aberto, o **log avisa uma vez** (e sugere reiniciar
+  o app quando puder), em vez de a atualização falhar sem explicação.
+- A correção vale para as atualizações **a partir desta versão**: quem estiver numa versão
+  anterior e vir esse erro deve instalar o instalador desta versão uma vez.
+
 ## AutoTrigger V10 — v2.3.34
 
 ### Tela inteira na janela

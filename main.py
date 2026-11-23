@@ -189,6 +189,15 @@ def main():
                    "o app pode cair ao liberar objetos de áudio.", "warn")
     crashdiag.start_freeze_watchdog(app, applog.log)
 
+    # Pasta temporária do .exe pode ser apagada por limpeza de %TEMP% com o app aberto
+    # (atualização falhava com "base_library.zip" não encontrado): carrega agora o que
+    # só seria carregado tarde e avisa no log se a pasta sumir.
+    import runtime_guard
+    _failed = runtime_guard.warm_up()
+    if _failed:
+        applog.log("Aviso: módulos que não foram pré-carregados: " + "; ".join(_failed), "warn")
+    runtime_guard.start_watch(applog.log)
+
     _suppress_screensaver_and_sleep()
 
     apply_theme(app)

@@ -33,6 +33,7 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
+import runtime_guard
 from version import __version__, GITHUB_REPO, GITHUB_ASSET_NAME, CLOUDFLARE_UPDATE_URL
 
 _API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -362,10 +363,17 @@ del "%~f0"
         except Exception:
             pass
         last = None
+        ok, why = runtime_guard.runtime_ok()
+        if not ok:
+            self._log(f"⚠ {why}; sigo com a atualização sem depender dela.", "warn")
+        # Bytes montados à mão e arquivo binário: nada aqui passa pelo sistema de
+        # codificações, que lê a pasta temporária do PyInstaller (pode ter sido apagada).
+        # (CRLF explícito: em modo binário o Python não converte, e o cmd.exe erra em .bat com LF)
+        data = runtime_guard.ascii_bytes(content.replace("\r\n", "\n").replace("\n", "\r\n"))
         for path in candidates:
             try:
-                with open(path, "w", encoding="ascii", errors="replace") as f:
-                    f.write(content)
+                with open(path, "wb") as f:
+                    f.write(data)
                 return path
             except OSError as exc:
                 last = exc
