@@ -17,8 +17,9 @@ from comtypes import CLSCTX_ALL
 _DEVICE_STATE_ACTIVE = 1
 
 # Ledger dos dispositivos que ESTE app mutou e ainda não desmutou.
-# Garante que, ao fechar, só desmutamos o que nós mesmos mutamos —
-# nunca alteramos um dispositivo cujo mute não foi dado pelo app.
+# Gravado em disco para a retomada depois de uma QUEDA (a sequência retomada desmuta
+# pelas próprias etapas). O app nunca desmuta sozinho: ao sair, ou se nada for retomado,
+# a lista só é esquecida (forget_app_mutes).
 _muted_by_app: set = set()
 _muted_names: dict = {}   # id -> nome, só para logar e achar a placa pelo nome
 _ledger_lock = threading.Lock()
@@ -31,7 +32,7 @@ def _ledger_path() -> str:
 
 def _save_ledger() -> None:
     """Grava o que o app mutou: se ele cair, a próxima abertura sabe o que ficou
-    mutado (ver restore_stale_mutes). Chamar com _ledger_lock."""
+    mutado (ver load_ledger / forget_app_mutes). Chamar com _ledger_lock."""
     try:
         tmp = _ledger_path() + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
@@ -43,7 +44,7 @@ def _save_ledger() -> None:
 
 def load_ledger() -> dict:
     """Carrega o que uma sessão anterior deixou mutado (id -> nome) para o ledger
-    desta sessão (assim 'Sair' ou o unmute da sequência retomada desmutam certo)."""
+    desta sessão (assim o unmute da sequência retomada desmuta certo)."""
     try:
         with open(_ledger_path(), encoding="utf-8") as f:
             data = json.load(f)
@@ -216,40 +217,20 @@ def set_device_mute(device_id: str, mute: bool, device_name: str = "") -> bool:
         return False
 
 
-def restore_app_mutes() -> list:
-    """
-    Desmuta APENAS os dispositivos que este app mutou e ainda não desmutou.
-    Chamado ao fechar o app. Retorna uma lista de {"id", "name"} dos
-    dispositivos restaurados (vazia se nenhum). Dispositivos cujo mute não
-    foi dado pelo app permanecem intocados.
-    """
+def forget_app_mutes(context: str = "Ao sair") -> list:
+    """O app NUNCA desmuta sozinho (pedido do usuário: nem ao fechar, nem depois de uma
+    queda -- não pode reabrir a linha por conta própria). Ao sair, ou quando a sequência
+    que caiu não é retomada, só esquece a lista do que tinha mutado (para nenhuma abertura
+    futura desmutar) e avisa no log o que continua mutado. Retorna [{"id","name"}]."""
     with _ledger_lock:
-        pending = list(_muted_by_app)
-    restored = []
-    for device_id in pending:
-        if set_device_mute(device_id, False, _muted_names.get(device_id, "")):
-            restored.append({"id": device_id,
-                             "name": _muted_names.get(device_id) or get_device_name(device_id)})
-    if restored:
-        names = ", ".join(d["name"] for d in restored)
-        _log(f"{len(restored)} dispositivo(s) desmutado(s) ao sair "
-             f"(estavam mutados pelo app): {names}", "warn")
-    return restored
-
-
-def restore_stale_mutes() -> list:
-    """Desmuta o que uma sessão anterior que caiu deixou mutado (ledger gravado em
-    disco) e esquece o que não deu para desmutar (placa ausente), para não tentar
-    de novo a cada abertura. Retorna [{"id","name"}] dos desmutados."""
-    with _ledger_lock:
-        if not _muted_by_app:
-            return []
-    restored = restore_app_mutes()
-    with _ledger_lock:
+        kept = [{"id": i, "name": _muted_names.get(i, "") or i} for i in _muted_by_app]
         _muted_by_app.clear()
         _muted_names.clear()
         _save_ledger()
-    return restored
+    if kept:
+        _log(f"{context}: " + ", ".join(d["name"] for d in kept) + " continua(m) mutado(s) "
+             "(o app não desmuta sozinho; desmute pela sequência ou no Windows).", "warn")
+    return kept
 
 
 def mute_device(device_id: str) -> bool:

@@ -22,7 +22,8 @@ aguardar retorno, etc.).
   semana / datas específicas).
 - **Hotkey com janela alvo** — foca a janela do software de rádio, envia a tecla e
   devolve o foco (não precisa estar em primeiro plano manualmente).
-- **Unmute seguro ao fechar** — só desmuta dispositivos que o próprio app mutou.
+- **Fechar não mexe no áudio** — ao sair, o que está mutado continua mutado (o app não
+  desmuta a linha ao fechar).
 - **Ferramentas de teste** — testar uma etapa isolada, **Ensaio** (dry-run, sem
   efeitos reais) e **Rodar agora** (disparo manual sem TXT).
 - **Auto-update** via GitHub Releases.

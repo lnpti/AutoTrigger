@@ -427,8 +427,8 @@ class SequenceEngine:
     def resume_interrupted(self) -> int:
         """Depois de uma queda: retoma, na etapa em que estavam, as sequências que
         rodavam -- se o app voltou dentro do limite (Configurações Globais,
-        `resume_window_seconds`). O que não for retomado e tiver deixado a entrada
-        mutada é desmutado. Retorna quantas foram retomadas."""
+        `resume_window_seconds`). Se nada for retomado, o que ficou mutado CONTINUA
+        mutado (o app nunca desmuta sozinho) e o log avisa. Retorna quantas foram retomadas."""
         runs, self._prior_runs = self._prior_runs, {}
         window = int(self._config.get_global().get("resume_window_seconds", 180) or 0)
         now = time.time()
@@ -459,10 +459,9 @@ class SequenceEngine:
             self.run_sequence(seq_id, resume=entry)
             resumed += 1
         if not resumed:
-            restored = _audio.restore_stale_mutes()
-            if restored:
-                self._log_fn("🔊 Desmutado(s) o(s) dispositivo(s) que ficaram mutados quando "
-                             "o app caiu: " + ", ".join(d["name"] for d in restored), "warn")
+            # O app NÃO desmuta nada sozinho (pedido do usuário): o que a sequência
+            # interrompida deixou mutado continua mutado; só avisa e esquece a lista.
+            _audio.forget_app_mutes("Depois da queda")
         return resumed
 
     def get_runner(self, seq_id: str) -> Optional[SequenceRunner]:

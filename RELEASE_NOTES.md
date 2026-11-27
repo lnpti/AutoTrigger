@@ -1,3 +1,17 @@
+## AutoTrigger V10 — v2.3.36
+
+### O app não desmuta mais nada sozinho
+
+- **Fechar o app não desmuta a linha:** ao sair pelo "Sair" da bandeja, o que está mutado
+  continua mutado (antes o app desmutava tudo o que tinha mutado). A próxima abertura
+  também não desmuta. O log registra o que ficou mutado.
+- **Depois de uma queda**, se a sequência não for retomada (o app voltou depois do limite
+  ou ela já foi retomada 2 vezes), o que ela mutou **continua mutado** e o log avisa
+  ("Depois da queda: … continua(m) mutado(s)"). Antes o app desmutava.
+- Quando a sequência **é retomada** depois de uma queda, nada muda: ela continua de onde
+  estava e desmuta pelas próprias etapas.
+- Saiu o aviso da bandeja "dispositivos foram desmutados ao fechar o app".
+
 ## AutoTrigger V10 — v2.3.35
 
 ### Atualização que não falha mais quando o Windows limpa a pasta temporária

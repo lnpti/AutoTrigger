@@ -92,7 +92,7 @@ Jornada_Maisnova/
 ├── config.json           # Configuração persistida (schema v2)
 ├── timeparse.py          # parse/format de tempo (h/m/s) + is_armed_today (agenda)
 ├── applog.py             # NOVO (v2.2) — logging em arquivo + UI sink + excepthooks
-├── audio_manager.py      # Mute/unmute via pycaw + ledger _muted_by_app / restore_app_mutes
+├── audio_manager.py      # Mute/unmute via pycaw + ledger _muted_by_app / forget_app_mutes
 ├── player.py             # AudioPlayer — reprodução VLC (arquivo + stream M3U)
 ├── file_monitor.py       # Watchdog — keyword_map dinâmico (register/unregister)
 ├── hotkey_sender.py      # send_hotkey + send_hotkey_to_window (pywin32) + list_window_titles
@@ -151,7 +151,8 @@ Jornada_Maisnova/
 
 ### Áudio (`audio_manager.py`)
 - `set_device_mute(id, mute)` mantém o ledger `_muted_by_app`.
-- `restore_app_mutes()` (chamado no fechamento) desmuta **só** o que o app mutou.
+- O app NUNCA desmuta sozinho (`forget_app_mutes()`, pedido do usuário em 27/11/2026):
+  nem ao fechar, nem depois de uma queda sem retomada.
 
 ### Hotkeys (`hotkey_sender.py`)
 - `send_hotkey()` → janela em foco.
@@ -281,8 +282,9 @@ Sete pedidos do operador, todos implementados:
 4. **Calendário de execução:** `schedule` por sequência (sempre / dias da semana
    / datas). Engine só arma a keyword nos dias válidos; recheck a cada 10 min;
    card mostra "fora de agenda".
-5. **Unmute condicional ao fechar:** ledger `_muted_by_app` +
-   `restore_app_mutes()` — só desmuta o que o app mutou.
+5. **Nunca desmuta sozinho** (desde 27/11/2026, pedido do usuário): ledger
+   `_muted_by_app` só serve à retomada pós-queda; ao sair ou se nada for retomado,
+   `forget_app_mutes()` esquece a lista sem desmutar.
 6. **Hotkey sem o app em foco:** `send_hotkey_to_window` (pywin32) foca a janela
    alvo configurada (`target_window` na etapa hotkey), envia e devolve o foco.
 7. **Tempo em h/m/s + aviso visual:** `timeparse.parse_secs/fmt_secs` aceitam
